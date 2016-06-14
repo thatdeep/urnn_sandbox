@@ -55,7 +55,7 @@ class Unitary(Manifold):
     """
     def __init__(self, n, p=None, k=None):
         if p is None:
-            self._p = p
+            p = n
         if k is None:
             k = 1
         if n <= 0:
@@ -97,6 +97,9 @@ class Unitary(Manifold):
         T.set_subtensor(dotted[1, :, :], A_real.dot(B_imag) + A_imag.dot(B_real))
         return dotted
 
+    def transpose(self, X):
+        return T.transpose(X, axes=(0, 2, 1))
+
     def conj(self, X):
         X_conj = T.copy(X)
         T.set_subtensor(X[1, :, :], -1 * X[1, :, :])
@@ -104,9 +107,10 @@ class Unitary(Manifold):
 
     def hconj(self, X):
         XR, XI = self.frac(X)
-        X_hconj = T.zeros((2,) + XR.T.shape)
-        T.set_subtensor(X_hconj[0, :, :], XR.T)
-        T.set_subtensor(X_hconj[1, :, :], -1 * XI.T)
+        X_hconj = T.transpose(X, axes=(0, 2, 1))
+        #X_hconj = T.zeros((2,) + XR.T.shape)
+        #T.set_subtensor(X_hconj[0, :, :], XR.T)
+        T.set_subtensor(X_hconj[1, :, :], -1 * X_hconj[1, :, :])
         return X_hconj
 
     def inner(self, X, G, H):
@@ -154,8 +158,8 @@ class Unitary(Manifold):
         YR, YI = self.frac(X + U)
 
         Q, R = T.nlinalg.qr(YR + 1j * YI)
-        Y = Q.dot(T.diag(T.sgn(T.sgn(T.diag(R))+.5)))
-        Y = T.stack([Y.real, Y.imag])
+        #Y = Q.dot(T.diag(T.sgn(T.sgn(T.diag(R))+.5)))
+        Y = T.stack([Q.real, Q.imag])
         return Y
 
     def exp(self, X, U):

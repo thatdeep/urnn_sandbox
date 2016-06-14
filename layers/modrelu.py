@@ -13,12 +13,14 @@ class Modrelu(lasagne.layers.Layer):
                                 regularizable=False)
 
     def modrelu(self, z, b):
-        zr, zi = z[:, :z.shape[1]//2], z[:, z.shape[0]//2:]
+        zr, zi = z[:, :z.shape[1]//2], z[:, z.shape[1]//2:]
         norms = T.sqrt(zr**2 + zi**2)
-        vals = norms + b
+        vals = norms + b.reshape((1, b.size))
         mask = T.gt(vals, 0)
-        mask = T.stack([mask, mask], axis=2).reshape(z.shape)
-        res = z * mask * vals / (norms + 1e-8)
+        mult = mask
+        mult = T.stack([mult, mult], axis=1).reshape(z.shape)
+
+        res = z * mult
         return res
 
     def get_output_for(self, input, **kwargs):
