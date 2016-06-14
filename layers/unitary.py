@@ -7,28 +7,23 @@ from manifolds import Unitary
 
 
 class UnitaryLayer(lasagne.layers.Layer):
-    def __init__(self, incoming, num_units, rank, params=None, **kwargs):
+    def __init__(self, incoming, **kwargs):
         super(UnitaryLayer, self).__init__(incoming, **kwargs)
         num_inputs = int(np.prod(self.input_shape[1:]))
-        if num_inputs != num_units:
-            print("input dimension isn't equal units dimension. Cannot build square matrix!")
         self.num_inputs = num_inputs
-        self.num_units = num_units
-        self.shape = (self.num_inputs, self.num_units)
-
-        basename = kwargs.get('name', '')
-
+        self.num_units = num_inputs // 2
+        self.shape = (self.num_inputs, self.num_inputs)
         self.manifold = Unitary(self.num_inputs)
-        if params:
-            UR, UI = params
-        else:
-            UR, UI = self.manifold.rand_np()
-        # give proper names
-        self.WR = self.add_param(UR, (self.num_inputs, self.num_units), name=basename + "WR", regularizable=False)
-        self.WR = self.add_param(UI, (self.num_inputs, self.num_units), name=basename + "WI", regularizable=False)
 
-    def get_output_shape_for(self, input_shape):
-        return (input_shape[0], self.num_units)
+        U = self.manifold.rand_np()
+        basename = kwargs.get('name', '')
+        self.U = self.add_param(U, (2, self.num_inputs, self.num_units), name=basename + "U", regularizable=False)
 
     def get_output_for(self, input, **kwargs):
-        return input
+        UR, UI = self.manifold.frac(self.U)
+        if input.ndim > 2:
+            # if the input has more than two dimensions, flatten it into a
+            # batch of feature vectors.
+            input = input.flatten(2)
+        IR, II = input[:, :input.shape[1]//2], input[:, input.shape[1]//2:]
+        return T.stack([IR.dot(UR) - II.dot(UI), IR.dot(UR) + II.dot(UI)]).reshape(input.shape)
