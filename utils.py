@@ -56,12 +56,15 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
                 param_updates = manifold.retr(param[manifold_name],
                                               manifold.from_partial(param[manifold_name], grad[manifold_name]),
                                               -learning_rate)
+                for p, upd in zip(param[manifold_name], param_updates):
+                    updates[p] = upd
             else:
-                param_updates = manifold.retr(param[manifold_name],
-                                              grad[manifold_name],
-                                              -learning_rate)
-            for p, upd in zip(param[manifold_name], param_updates):
-                updates[p] = upd
+                pp = param[manifold_name]
+                gg = grad[manifold_name]
+                if len(pp) == 1:
+                    pp, gg = pp[0], gg[0]
+                param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+                updates[pp] = param_updates
         else:
             updates[param] = param - learning_rate * grad
 
