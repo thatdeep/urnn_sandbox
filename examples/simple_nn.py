@@ -58,7 +58,7 @@ def generate_train_acc(input_X=None, target_y=None, width=10, num_hidden=2):
 
 
 def run(X_train, y_train, X_val, y_val, X_text, y_test):
-    num_epochs = 5
+    num_epochs = 20
     batch_size = 100
 
     train, acc = generate_train_acc(width=50, num_hidden=10)
