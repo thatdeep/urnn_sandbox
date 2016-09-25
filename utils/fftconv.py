@@ -18,27 +18,16 @@ class FFTOp(gof.Op):
         # expect complex valued (last axis of size 2) input, returns tensor of same size
         return tensor.TensorType(inp.dtype, broadcastable=[False] * inp.type.ndim)
 
-    def make_node(self, a, n=None):
+    def make_node(self, a):
         a = tensor.as_tensor_variable(a)
         if a.ndim < 3:
             raise TypeError('%s: input must have dimension >= 3,  with ' %
                             self.__class__.__name__ +
                             'first dimension batches and last real/imag parts')
-        if n is None:
-            n = a.shape[1]
-            n = tensor.as_tensor_variable(n)
-        else:
-            n = tensor.as_tensor_variable(n)
-            if (not n.dtype.startswith('int')) and \
-               (not n.dtype.startswith('uint')):
-                raise TypeError('%s: length of the transformed axis must be'
-                                ' of type integer' % self.__class__.__name__)
-        return gof.Apply(self, [a, n], [self.output_type(a)()])
+        return gof.Apply(self, [a], [self.output_type(a)()])
 
     def perform(self, node, inputs, output_storage):
         a = inputs[0]
-        n = inputs[1]
-
 
         frames_dtype = a.dtype
         if a.dtype == np.float32 or frames_dtype == np.int32:
@@ -46,7 +35,7 @@ class FFTOp(gof.Op):
         elif a.dtype == np.float64:
             complex_dtype = np.complex128
 
-        out = np.fft.fft(np.squeeze(a.view(complex_dtype)), n=int(n))
+        out = np.fft.fft(np.squeeze(a.view(complex_dtype)), a.shape[1])
         if frames_dtype == np.int32:
             frames_dtype = np.float32
         elif frames_dtype == np.int64:
@@ -55,13 +44,7 @@ class FFTOp(gof.Op):
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
-        n = inputs[1]
-        return [ifft(gout, n), DisconnectedType()()]
-        #return [FFT(inverse=non_inverse)(output_gradients[0])]
-
-    def connection_pattern(self, node):
-        # Specify that shape input parameter has no connection to graph and gradients.
-        return [[True], [False]]
+        return [ifft(gout)]
 
 
 class IFFTOp(gof.Op):
@@ -71,27 +54,16 @@ class IFFTOp(gof.Op):
         # expect complex valued (last axis of size 2) input, returns tensor of same size
         return tensor.TensorType(inp.dtype, broadcastable=[False] * inp.type.ndim)
 
-    def make_node(self, a, n=None):
+    def make_node(self, a):
         a = tensor.as_tensor_variable(a)
         if a.ndim < 3:
             raise TypeError('%s: input must have dimension >= 3,  with ' %
                             self.__class__.__name__ +
                             'first dimension batches and last real/imag parts')
-        if n is None:
-            n = a.shape[1]
-            n = tensor.as_tensor_variable(n)
-        else:
-            n = tensor.as_tensor_variable(n)
-            if (not n.dtype.startswith('int')) and \
-               (not n.dtype.startswith('uint')):
-                raise TypeError('%s: length of the transformed axis must be'
-                                ' of type integer' % self.__class__.__name__)
-        return gof.Apply(self, [a, n], [self.output_type(a)()])
+        return gof.Apply(self, [a], [self.output_type(a)()])
 
     def perform(self, node, inputs, output_storage):
         a = inputs[0]
-        n = inputs[1]
-
 
         frames_dtype = a.dtype
         if a.dtype == np.float32 or frames_dtype == np.int32:
@@ -99,7 +71,7 @@ class IFFTOp(gof.Op):
         elif a.dtype == np.float64:
             complex_dtype = np.complex128
 
-        out = np.fft.ifft(np.squeeze(a.view(complex_dtype)), n=int(n))
+        out = np.fft.ifft(np.squeeze(a.view(complex_dtype)), n=a.shape[1])
         if frames_dtype == np.int32:
             frames_dtype = np.float32
         elif frames_dtype == np.int64:
@@ -108,12 +80,7 @@ class IFFTOp(gof.Op):
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
-        n = inputs[1]
-        return [fft(gout, n), DisconnectedType()()]
-
-    def connection_pattern(self, node):
-        # Specify that shape input parameter has no connection to graph and gradients.
-        return [[True], [False]]
+        return [fft(gout), DisconnectedType()()]
 
 
 fft, ifft = FFTOp(), IFFTOp()

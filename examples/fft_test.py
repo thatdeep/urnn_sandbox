@@ -11,7 +11,7 @@ if __name__ == "__main__":
 
     m, n = 5, 5
 
-    fft_res = fft(X, n)
+    fft_res = fft(X)
     fft_sum = T.sum(fft_res**2)
     simple_sum = T.sum(X**2)
 
