@@ -38,7 +38,7 @@ if __name__ == "__main__":
     print(stage4.shape)
     print("after {}:".format("poker.dimshuffle(0, 2, 1)"))
     print(stage5.shape)
-    """
+
     fft_res = cufft(X)
     fft_sum = T.sum(fft_res**2)
     simple_sum = T.sum(X**2)
@@ -62,10 +62,7 @@ if __name__ == "__main__":
     #print(target_grad_num)
     print('-'*80)
     print(np.allclose(simple_data_back, target_grad_num))
-    """
 
-    ppoker = theano.function([X], poker)
-    print(ppoker(data))
 """
     fftx = fft(X, n)
     fftx3 = ifft(X, n)
