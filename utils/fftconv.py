@@ -30,28 +30,19 @@ class FFTOp(gof.Op):
         a = inputs[0]
 
         frames_dtype = a.dtype
-        if a.dtype == np.float32 or frames_dtype == np.int32:
+        if a.dtype in [np.float32, np.int32]:
             complex_dtype = np.complex64
-        elif a.dtype == np.float64:
+        elif a.dtype in [np.float64, np.int64]:
             complex_dtype = np.complex128
-
-        assert(len(a.shape) == 3)
-
-        # WTF using this is hella dangerous if we have dimshuffled view on some array as an input
-        # It just compress wrong dimensions
-        # in_data = a.view(complex_dtype)
+        else:
+            raise ValueError('array type must be 32/64 int/float, but is {}'.format(a.dtype))
 
         in_data = np.zeros(a.shape[:-1], dtype=complex_dtype)
         in_data.real = a[:, :, 0]
         in_data.imag = a[:, :, 1]
 
-        out = np.fft.fft(np.squeeze(in_data), a.shape[1])
-        if frames_dtype == np.int32:
-            frames_dtype = np.float32
-        elif frames_dtype == np.int64:
-            frames_dtype = np.float64
+        out = np.fft.fft(in_data, a.shape[1])
         output_storage[0][0] = np.stack([out.real, out.imag], axis=-1)
-        #output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype).copy()
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
@@ -76,27 +67,17 @@ class IFFTOp(gof.Op):
     def perform(self, node, inputs, output_storage):
         a = inputs[0]
 
-        frames_dtype = a.dtype
-        if a.dtype == np.float32 or frames_dtype == np.int32:
+        if a.dtype in [np.float32, np.int32]:
             complex_dtype = np.complex64
-        elif a.dtype == np.float64:
+        elif a.dtype in [np.float64, np.int64]:
             complex_dtype = np.complex128
-
-        # WTF using this is hella dangerous if we have dimshuffled view on some array as an input
-        # It just compress wrong dimensions
-        # in_data = a.view(complex_dtype)
 
         in_data = np.zeros(a.shape[:-1], dtype=complex_dtype)
         in_data.real = a[:, :, 0]
         in_data.imag = a[:, :, 1]
 
-        out = np.fft.ifft(np.squeeze(in_data), a.shape[1])
-        if frames_dtype == np.int32:
-            frames_dtype = np.float32
-        elif frames_dtype == np.int64:
-            frames_dtype = np.float64
+        out = np.fft.ifft(in_data, a.shape[1])
         output_storage[0][0] = np.stack([out.real, out.imag], axis=-1)
-        #output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype).copy()
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
