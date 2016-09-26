@@ -14,7 +14,7 @@ def initialize_matrix(n_in, n_out, name, rng):
 def do_fft(input, n_hidden):
     fft_input = T.reshape(input, (input.shape[0], 2, n_hidden))
     fft_input = fft_input.dimshuffle(0,2,1)
-    fft_output = cufft(fft_input) / T.sqrt(n_hidden)
+    fft_output = cufft(fft_input) * T.sqrt(n_hidden)
     fft_output = fft_output.dimshuffle(0,2,1)
     output = T.reshape(fft_output, (input.shape[0], 2*n_hidden))
     return output
@@ -30,7 +30,7 @@ def do_ifft(input, n_hidden):
 
 def times_diag(input, n_hidden, diag, swap_re_im):
     d = T.concatenate([diag, -diag])
-    
+
     Re = T.cos(d).dimshuffle('x',0)
     Im = T.sin(d).dimshuffle('x',0)
 
@@ -38,22 +38,22 @@ def times_diag(input, n_hidden, diag, swap_re_im):
     input_times_Im = input * Im
 
     output = input_times_Re + input_times_Im[:, swap_re_im]
-   
-    return output
-    
-    
-def vec_permutation(input, index_permute):
-    return input[:, index_permute]      
 
-    
+    return output
+
+
+def vec_permutation(input, index_permute):
+    return input[:, index_permute]
+
+
 def times_reflection(input, n_hidden, reflection):
     input_re = input[:, :n_hidden]
     input_im = input[:, n_hidden:]
     reflect_re = reflection[:n_hidden]
     reflect_im = reflection[n_hidden:]
-   
+
     vstarv = (reflection**2).sum()
-    
+
     input_re_reflect_re = T.dot(input_re, reflect_re)
     input_re_reflect_im = T.dot(input_re, reflect_im)
     input_im_reflect_re = T.dot(input_im, reflect_re)
@@ -63,12 +63,12 @@ def times_reflection(input, n_hidden, reflection):
     b = T.outer(input_re_reflect_im + input_im_reflect_re, reflect_im)
     c = T.outer(input_re_reflect_re - input_im_reflect_im, reflect_im)
     d = T.outer(input_re_reflect_im + input_im_reflect_re, reflect_re)
-         
+
     output = input
     output = T.inc_subtensor(output[:, :n_hidden], - 2. / vstarv * (a + b))
     output = T.inc_subtensor(output[:, n_hidden:], - 2. / vstarv * (d - c))
 
-    return output    
+    return output
 
 
 def compute_cost_t(lin_output, loss_function, y_t):
@@ -87,9 +87,9 @@ def initialize_data_nodes(loss_function, input_type, out_every_t):
     x = T.tensor3() if input_type == 'real' else T.matrix(dtype='int32')
     if loss_function == 'CE':
         y = T.matrix(dtype='int32') if out_every_t else T.vector(dtype='int32')
-    else:  
+    else:
         y = T.tensor3() if out_every_t else T.matrix()
-    return x, y        
+    return x, y
 
 
 
@@ -114,7 +114,7 @@ def IRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
             data_lin_output = V[x_t]
         else:
             data_lin_output = T.dot(x_t, V)
-        
+
         h_t = T.nnet.relu(T.dot(h_prev, W) + data_lin_output + hidden_bias.dimshuffle('x', 0))
         if out_every_t:
             lin_output = T.dot(h_t, out_mat) + out_bias.dimshuffle('x', 0)
@@ -122,9 +122,9 @@ def IRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
         else:
             cost_t = theano.shared(np.float32(0.0))
             acc_t = theano.shared(np.float32(0.0))
- 
+
         return h_t, cost_t, acc_t
-    
+
     non_sequences = [V, W, hidden_bias, out_mat, out_bias]
 
     h_0_batch = T.tile(h_0, [x.shape[1], 1])
@@ -135,12 +135,12 @@ def IRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
         sequences = [x, T.tile(theano.shared(np.zeros((1,1), dtype=theano.config.floatX)), [x.shape[0], 1, 1])]
 
     outputs_info = [h_0_batch, theano.shared(np.float32(0.0)), theano.shared(np.float32(0.0))]
-    
+
     [hidden_states, cost_steps, acc_steps], updates = theano.scan(fn=recurrence,
                                                                   sequences=sequences,
                                                                   non_sequences=non_sequences,
                                                                   outputs_info = outputs_info)
-   
+
     if not out_every_t:
         lin_output = T.dot(hidden_states[-1,:,:], out_mat) + out_bias.dimshuffle('x', 0)
         costs = compute_cost_t(lin_output, loss_function, y)
@@ -173,7 +173,7 @@ def tanhRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, l
             data_lin_output = V[x_t]
         else:
             data_lin_output = T.dot(x_t, V)
-        
+
         h_t = T.tanh(T.dot(h_prev, W) + data_lin_output + hidden_bias.dimshuffle('x', 0))
         if out_every_t:
             lin_output = T.dot(h_t, out_mat) + out_bias.dimshuffle('x', 0)
@@ -181,9 +181,9 @@ def tanhRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, l
         else:
             cost_t = theano.shared(np.float32(0.0))
             acc_t = theano.shared(np.float32(0.0))
- 
-        return h_t, cost_t, acc_t 
-    
+
+        return h_t, cost_t, acc_t
+
     non_sequences = [V, W, hidden_bias, out_mat, out_bias]
 
     h_0_batch = T.tile(h_0, [x.shape[1], 1])
@@ -194,12 +194,12 @@ def tanhRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, l
         sequences = [x, T.tile(theano.shared(np.zeros((1,1), dtype=theano.config.floatX)), [x.shape[0], 1, 1])]
 
     outputs_info = [h_0_batch, theano.shared(np.float32(0.0)), theano.shared(np.float32(0.0))]
-        
+
     [hidden_states, cost_steps, acc_steps], updates = theano.scan(fn=recurrence,
                                                                   sequences=sequences,
                                                                   non_sequences=non_sequences,
                                                                   outputs_info=outputs_info)
-   
+
     if not out_every_t:
         lin_output = T.dot(hidden_states[-1,:,:], out_mat) + out_bias.dimshuffle('x', 0)
         costs = compute_cost_t(lin_output, loss_function, y)
@@ -236,10 +236,10 @@ def LSTM(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
     parameters = [W_i, W_f, W_c, W_o, U_i, U_f, U_c, U_o, V_o, b_i, b_f, b_c, b_o, h_0, state_0, out_mat, out_bias]
 
     x, y = initialize_data_nodes(loss_function, input_type, out_every_t)
-    
+
     def recurrence(x_t, y_t, h_prev, state_prev, cost_prev, acc_prev,
                    W_i, W_f, W_c, W_o, U_i, U_f, U_c, U_o, V_o, b_i, b_f, b_c, b_o, out_mat, out_bias):
-        
+
         if loss_function == 'CE':
             x_t_W_i = W_i[x_t]
             x_t_W_c = W_c[x_t]
@@ -250,7 +250,7 @@ def LSTM(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
             x_t_W_c = T.dot(x_t, W_c)
             x_t_W_f = T.dot(x_t, W_f)
             x_t_W_o = T.dot(x_t, W_o)
-            
+
         input_t = T.nnet.sigmoid(x_t_W_i + T.dot(h_prev, U_i) + b_i.dimshuffle('x', 0))
         candidate_t = T.tanh(x_t_W_c + T.dot(h_prev, U_c) + b_c.dimshuffle('x', 0))
         forget_t = T.nnet.sigmoid(x_t_W_f + T.dot(h_prev, U_f) + b_f.dimshuffle('x', 0))
@@ -267,29 +267,29 @@ def LSTM(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
         else:
             cost_t = theano.shared(np.float32(0.0))
             acc_t = theano.shared(np.float32(0.0))
- 
+
         return h_t, state_t, cost_t, acc_t
 
     non_sequences = [W_i, W_f, W_c, W_o, U_i, U_f, U_c, U_o, V_o, b_i, b_f, b_c, b_o, out_mat, out_bias]
 
     h_0_batch = T.tile(h_0, [x.shape[1], 1])
     state_0_batch = T.tile(state_0, [x.shape[1], 1])
-    
+
     if out_every_t:
         sequences = [x, y]
     else:
         sequences = [x, T.tile(theano.shared(np.zeros((1,1), dtype=theano.config.floatX)), [x.shape[0], 1, 1])]
 
     outputs_info = [h_0_batch, state_0_batch, theano.shared(np.float32(0.0)), theano.shared(np.float32(0.0))]
-        
+
     [hidden_states, states, cost_steps, acc_steps], updates = theano.scan(fn=recurrence,
                                                                           sequences=sequences,
                                                                           non_sequences=non_sequences,
                                                                           outputs_info=outputs_info)
-    
+
     if not out_every_t:
         lin_output = T.dot(hidden_states[-1,:,:], out_mat) + out_bias.dimshuffle('x', 0)
-        costs = compute_cost_t(lin_output, loss_function, y)            
+        costs = compute_cost_t(lin_output, loss_function, y)
     else:
         cost = cost_steps.mean()
         accuracy = acc_steps.mean()
@@ -309,35 +309,35 @@ def complex_RNN(n_input, n_hidden, n_output, input_type='real', out_every_t=Fals
     hidden_bias = theano.shared(np.asarray(rng.uniform(low=-0.01,
                                                        high=0.01,
                                                        size=(n_hidden,)),
-                                           dtype=theano.config.floatX), 
+                                           dtype=theano.config.floatX),
                                 name='hidden_bias')
-    
+
     reflection = initialize_matrix(2, 2*n_hidden, 'reflection', rng)
     out_bias = theano.shared(np.zeros((n_output,), dtype=theano.config.floatX), name='out_bias')
     theta = theano.shared(np.asarray(rng.uniform(low=-np.pi,
                                                  high=np.pi,
                                                  size=(3, n_hidden)),
-                                     dtype=theano.config.floatX), 
+                                     dtype=theano.config.floatX),
                                 name='theta')
 
-    bucket = np.sqrt(3. / 2 / n_hidden) 
+    bucket = np.sqrt(3. / 2 / n_hidden)
     h_0 = theano.shared(np.asarray(rng.uniform(low=-bucket,
                                                high=bucket,
-                                               size=(1, 2 * n_hidden)), 
+                                               size=(1, 2 * n_hidden)),
                                    dtype=theano.config.floatX),
                         name='h_0')
-    
+
     parameters = [V, U, hidden_bias, reflection, out_bias, theta, h_0]
 
     x, y = initialize_data_nodes(loss_function, input_type, out_every_t)
-    
+
     index_permute = np.random.permutation(n_hidden)
 
     index_permute_long = np.concatenate((index_permute, index_permute + n_hidden))
     swap_re_im = np.concatenate((np.arange(n_hidden, 2*n_hidden), np.arange(n_hidden)))
-    
+
     # define the recurrence used by theano.scan
-    def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, theta, V, hidden_bias, out_bias, U):  
+    def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, theta, V, hidden_bias, out_bias, U):
 
         # Compute hidden linear transform
         step1 = times_diag(h_prev, n_hidden, theta[0,:], swap_re_im)

@@ -35,12 +35,23 @@ class FFTOp(gof.Op):
         elif a.dtype == np.float64:
             complex_dtype = np.complex128
 
-        out = np.fft.fft(np.squeeze(a.view(complex_dtype)), a.shape[1])
+        assert(len(a.shape) == 3)
+
+        # WTF using this is hella dangerous if we have dimshuffled view on some array as an input
+        # It just compress wrong dimensions
+        # in_data = a.view(complex_dtype)
+
+        in_data = np.zeros(a.shape[:-1], dtype=complex_dtype)
+        in_data.real = a[:, :, 0]
+        in_data.imag = a[:, :, 1]
+
+        out = np.fft.fft(np.squeeze(in_data), a.shape[1])
         if frames_dtype == np.int32:
             frames_dtype = np.float32
         elif frames_dtype == np.int64:
             frames_dtype = np.float64
-        output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype)
+        output_storage[0][0] = np.stack([out.real, out.imag], axis=-1)
+        #output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype).copy()
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
@@ -71,21 +82,70 @@ class IFFTOp(gof.Op):
         elif a.dtype == np.float64:
             complex_dtype = np.complex128
 
-        out = np.fft.ifft(np.squeeze(a.view(complex_dtype)), n=a.shape[1])
+        # WTF using this is hella dangerous if we have dimshuffled view on some array as an input
+        # It just compress wrong dimensions
+        # in_data = a.view(complex_dtype)
+
+        in_data = np.zeros(a.shape[:-1], dtype=complex_dtype)
+        in_data.real = a[:, :, 0]
+        in_data.imag = a[:, :, 1]
+
+        out = np.fft.ifft(np.squeeze(in_data), a.shape[1])
         if frames_dtype == np.int32:
             frames_dtype = np.float32
         elif frames_dtype == np.int64:
             frames_dtype = np.float64
-        output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype)
+        output_storage[0][0] = np.stack([out.real, out.imag], axis=-1)
+        #output_storage[0][0] = out.view(frames_dtype).reshape(out.shape + (2,)).astype(frames_dtype).copy()
 
     def grad(self, inputs, output_gradients):
         gout, = output_gradients
-        return [fft(gout), DisconnectedType()()]
+        return [fft(gout)]
 
 
-fft, ifft = FFTOp(), IFFTOp()
+fft_op, ifft_op = FFTOp(), IFFTOp()
 
-cufft, cuifft = FFTOp(), IFFTOp()
+cufft_op, cuifft_op = FFTOp(), IFFTOp()
+
+
+def fft(inp, norm=None):
+    scaling = 1.0
+    cond_norm = _unitary(norm)
+    if cond_norm == "ortho":
+        scaling = tensor.sqrt(inp.shape[1])
+    return fft_op(inp) / scaling
+
+
+def ifft(inp, norm=None):
+    scaling = 1.0
+    cond_norm = _unitary(norm)
+    if cond_norm == "ortho":
+        scaling = tensor.sqrt(inp.shape[1])
+    return ifft_op(inp) * scaling
+
+
+def cufft(inp, norm=None):
+    scaling = 1.0
+    cond_norm = _unitary(norm)
+    if cond_norm == "ortho":
+        scaling = tensor.sqrt(inp.shape[1])
+    return cufft_op(inp) / scaling
+
+
+def cuifft(inp, norm=None):
+    scaling = 1.0
+    cond_norm = _unitary(norm)
+    if cond_norm == "ortho":
+        scaling = tensor.sqrt(inp.shape[1])
+    return cuifft_op(inp) * scaling
+
+
+def _unitary(norm):
+    if norm not in (None, "ortho", "no_norm"):
+        raise ValueError("Invalid value %s for norm, must be None, 'ortho' or "
+                         "'no norm'" % norm)
+    return norm
+
 
 """
 class IFFTOp(Op):
