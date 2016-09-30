@@ -177,6 +177,9 @@ class Unitary(Manifold):
                           1j * rnd.normal(size=(self._n, self._p)))
         return np.stack([Q.real, Q.imag])
 
+    def identity_np(self):
+        return np.stack([np.identity(self._n), np.zeros((self._n, self._n))])
+
     def rand(self):
         Q, unused = T.nlinalg.qr(srnd.normal(size=(self._n, self._p)) +
                           1j * srnd.normal(size=(self._n, self._p)))
