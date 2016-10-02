@@ -65,9 +65,18 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         gradients = T.grad(costs[0], parameters)
         gradients = [T.clip(g, -gradient_clipping, gradient_clipping) for g in gradients]
 
+    elif (model == 'complex_RNN_momentum'):
+        inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
+                                                out_every_t=out_every_t, loss_function=loss_function)
+        gradients = T.grad(costs[0], parameters)
     elif (model == 'complex_RNN'):
         inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
+        gradients = T.grad(costs[0], parameters)
+
+    elif (model == 'URNN'):
+        inputs, parameters, costs, manifolds = URNN(n_input, n_hidden, n_output, input_type=input_type,
+                                                    out_every_t=out_every_t, loss_function=loss_function)
         gradients = T.grad(costs[0], parameters)
 
     elif (model == 'IRNN'):
@@ -91,7 +100,15 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
     index = T.iscalar('i')
 
-    updates, rmsprop = rms_prop(learning_rate, parameters, gradients)
+    if model == 'complex_RNN_momentum':
+        manifolds = {}
+        updates = nesterov_momentum(gradients, parameters, learning_rate, momentum=0.9, manifolds=manifolds)
+        rmsprop = []
+    if model == 'URNN':
+        updates = nesterov_momentum(gradients, parameters, learning_rate, momentum=0.9, manifolds=manifolds)
+        rmsprop = []
+    else:
+        updates, rmsprop = rms_prop(learning_rate, parameters, gradients)
 
     givens = {inputs[0] : s_train_x[:, n_batch * index : n_batch * (index + 1), :],
               inputs[1] : s_train_y[n_batch * index : n_batch * (index + 1), :]}

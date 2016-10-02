@@ -1,4 +1,5 @@
 import numpy as np
+import scipy as sp
 import numpy.linalg as la
 import numpy.random as rnd
 
@@ -6,19 +7,164 @@ import theano
 from theano import tensor
 from theano.tensor.shared_randomstreams import RandomStreams
 
+
+try:
+    import scipy.linalg
+    imported_scipy = True
+except ImportError:
+    # some ops (e.g. Cholesky, Solve, A_Xinv_b) won't work
+    imported_scipy = False
+
+
 srnd = RandomStreams(rnd.randint(0, 1000))
 
 import warnings
-import numpy as np
-import numpy.linalg as la
-import numpy.random as rnd
 
 from manifolds.manifold import Manifold
 
 import copy
 
 import theano
-from theano import tensor as T
+from theano import tensor as T, Op, Apply
+
+from theano.tensor import slinalg, as_tensor_variable
+
+class Expm(Op):
+    """
+    Compute the matrix exponential of a square array.
+    """
+
+    __props__ = ()
+
+    def make_node(self, A):
+        assert imported_scipy, (
+            "Scipy not available. Scipy is needed for the Expm op")
+
+        A = as_tensor_variable(A)
+        assert A.ndim == 3
+        expm = theano.tensor.tensor3(dtype=A.dtype)
+        return Apply(self, [A, ], [expm, ])
+
+    def perform(self, node, inputs, outputs):
+        (A,) = inputs
+        (expm,) = outputs
+        temp = scipy.linalg.expm(A[0, :, :] + 1j * A[1, :, :])
+        expm[0] = np.stack([temp.real, temp.imag])
+
+    def infer_shape(self, node, shapes):
+        return [shapes[0]]
+
+expm = Expm()
+
+
+class UnitaryKron(Manifold):
+    def __init__(nd, self):
+        super(UnitaryKron, self).__init__()
+        self._manifolds = tuple(Unitary(n=n) for n in nd)
+        self._name = "Product of Stiefel unitary manifolds of dims {}".format(nd)
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def dim(self):
+        #hasn't computed
+        #self._k * (2 * self._n * self._p - self._p**2)
+        raise NotImplementedError
+
+
+    @property
+    def typicaldist(self):
+        raise NotImplementedError
+
+    def frac(self, A):
+        return tuple(a[0, :, :] for a in A), tuple(a[1, :, :] for a in A)
+
+    def complex_dot(self, A, B):
+        prod = []
+        for (a, b, manifold) in zip(A, B, self._manifolds):
+            prod.append(manifold.complex_dot(a, b))
+        return tuple(prod)
+
+    def transpose(self, X):
+        return tuple(manifold.transpose(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def conj(self, X):
+        return tuple(manifold.conj(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def hconj(self, X):
+        return tuple(manifold.hconj(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def inner(self, X, G, H):
+        raise NotImplementedError
+
+    def norm(self, X, G):
+        raise NotImplementedError
+
+    def dist(self, X, Y):
+        raise NotImplementedError
+
+    def herm(self, X):
+        return tuple(manifold.herm(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def proj(self, X, U):
+        return tuple(manifold.proj(x, u) for (manifold, x, u) in zip(self._manifolds, X, U))
+
+
+    def tangent(self, X, U):
+        return self.proj(X, U)
+
+    def egrad2rgrad(self, X, U):
+        return self.proj(X, U)
+
+    def ehess2rhess(self, X, egrad, ehess, H):
+        return tuple(manifold.ehess2rhess(x, eg, eh, h) for (manifold, x, eg, eh, h) in \
+                     zip(self._manifolds, X, egrad, ehess, H))
+
+    def retr(self, X, U):
+        return tuple(manifold.retr(x, u) for (manifold, x, u) in zip(self._manifolds, X, U))
+
+
+    def exp(self, X, U):
+        # The exponential (in the sense of Lie group theory) of a tangent
+        # vector U at X.
+        raise NotImplementedError
+
+    def log(self, X, Y):
+        # The logarithm (in the sense of Lie group theory) of Y. This is the
+        # inverse of exp.
+        raise NotImplementedError
+
+    def rand_np(self):
+        return tuple(manifold.rand_np() for manifold in self._manifolds)
+
+
+    def identity_np(self):
+        return tuple(manifold.identity_np() for manifold in self._manifolds)
+
+    def rand(self):
+        return tuple(manifold.rand() for manifold in self._manifolds)
+
+    def randvec(self, X):
+        return tuple(manifold.randvec(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def zerovec(self, X):
+        return tuple(manifold.zerovec(x) for (manifold, x) in zip(self._manifolds, X))
+
+    def transp(self, x1, x2, d):
+        return self.proj(x2, d)
+
+    def lincomb(self, X, a1, u1, a2=None, u2=None):
+        if u2 is None and a2 is None:
+            return a1 * u1
+        elif None not in [a1, u1, a2, u2]:
+            return a1 * u1 + a2 * u2
+        else:
+            raise ValueError('FixedRankEmbeeded.lincomb takes 3 or 5 arguments')
+
+
+
 
 
 class Unitary(Manifold):
@@ -73,6 +219,8 @@ class Unitary(Manifold):
             self._name = 'Complex Stiefel manifold St({}, {})'.format(n, p)
         else:
             self._name = 'Product complex Stiefel manifold St({}, {})^{}'.format(n, p, k)
+        self._exponential = True
+
 
     @property
     def name(self):
@@ -162,10 +310,18 @@ class Unitary(Manifold):
         Y = T.stack([Q.real, Q.imag])
         return Y
 
+    def stack(self, arrays, axis):
+        return T.concatenate(arrays, axis=axis+1)
+
     def exp(self, X, U):
         # The exponential (in the sense of Lie group theory) of a tangent
         # vector U at X.
-        raise NotImplementedError
+        first = self.stack([X, U], axis=1)
+        XhU = self.complex_dot(self.hconj(X), U)
+        second = expm(self.stack([self.stack([XhU, -self.complex_dot(self.hconj(U), U)], 1),
+                                  self.stack([self.identity(), XhU], 1)], 0))
+        third = self.stack([expm(-XhU), self.zeros()], 0)
+        return self.complex_dot(self.complex_dot(first, second), third)
 
     def log(self, X, Y):
         # The logarithm (in the sense of Lie group theory) of Y. This is the
@@ -176,6 +332,12 @@ class Unitary(Manifold):
         Q, unused = la.qr(rnd.normal(size=(self._n, self._p)) +
                           1j * rnd.normal(size=(self._n, self._p)))
         return np.stack([Q.real, Q.imag])
+
+    def zeros(self):
+        return tensor.zeros((2, self._n, self._n))
+
+    def identity(self):
+        return tensor.stack([tensor.eye(self._n), tensor.zeros((self._n, self._n))], axis=0)
 
     def identity_np(self):
         return np.stack([np.identity(self._n), np.zeros((self._n, self._n))])

@@ -84,7 +84,12 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
             manifold_name = list(param.keys())[0]
             manifold = manifolds[manifold_name]
             if hasattr(manifold, "from_partial"):
-                param_updates = manifold.retr(param[manifold_name],
+                if hasattr(manifold, '_exponential') and manifold._exponential:
+                    param_updates = manifold.exp(param[manifold_name],
+                                              manifold.from_partial(param[manifold_name], grad[manifold_name]),
+                                              -learning_rate)
+                else:
+                    param_updates = manifold.retr(param[manifold_name],
                                               manifold.from_partial(param[manifold_name], grad[manifold_name]),
                                               -learning_rate)
                 for p, upd in zip(param[manifold_name], param_updates):
@@ -94,7 +99,10 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
                 gg = grad[manifold_name]
                 if len(pp) == 1:
                     pp, gg = pp[0], gg[0]
-                param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+                if hasattr(manifold, '_exponential') and manifold._exponential:
+                    param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+                else:
+                    param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
                 updates[pp] = param_updates
         else:
             updates[param] = param - learning_rate * grad
@@ -280,7 +288,10 @@ def apply_nesterov_momentum(updates, params=None, momentum=0.9, manifolds=None):
                 update_for_transport = updates[lone_param]
                 x = manifold.transp(lone_param, update_for_transport, multiplied)
                 updates[velocity] = x
-                result = manifold.retr(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
+                if hasattr(manifold, '_exponential') and manifold._exponential:
+                    result = manifold.exp(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
+                else:
+                    result = manifold.retr(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
                 updates[lone_param] = result
             else:
                 velocities = tuple(theano.shared(np.zeros(v.shape, dtype=v.dtype), broadcastable=p.broadcastable)\
@@ -291,7 +302,10 @@ def apply_nesterov_momentum(updates, params=None, momentum=0.9, manifolds=None):
                 for v, x_part in zip(velocities, x):
                     updates[v] = x_part
                 upp = [updates[p] for p in param[manifold_name]]
-                result = manifold.retr(upp, manifold.lincomb(upp, momentum, x))
+                if hasattr(manifold, '_exponential') and manifold._exponential:
+                    result = manifold.exp(upp, manifold.lincomb(upp, momentum, x))
+                else:
+                    result = manifold.retr(upp, manifold.lincomb(upp, momentum, x))
                 for p, r in zip(param[manifold_name], result):
                     updates[p] = r
         else:
