@@ -463,20 +463,13 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
                                            dtype=theano.config.floatX),
                                 name='hidden_bias')
 
-    reflection = initialize_matrix(2, 2*n_hidden, 'reflection', rng)
     MANIFOLD_NAME = "UNITARY"
     unitary_manifold = Unitary(n=n_hidden)
-    #unitary_matrix = theano.shared(value=unitary_manifold.rand_np(), name=MANIFOLD_NAME)
     unitary_matrix = theano.shared(value=unitary_manifold.rand_np(), name=MANIFOLD_NAME)
     manifolds = {MANIFOLD_NAME: unitary_manifold}
 
 
     out_bias = theano.shared(np.zeros((n_output,), dtype=theano.config.floatX), name='out_bias')
-    #theta = theano.shared(np.asarray(rng.uniform(low=-np.pi,
-    #                                             high=np.pi,
-    #                                             size=(3, n_hidden)),
-    #                                 dtype=theano.config.floatX),
-    #                            name='theta')
 
     bucket = np.sqrt(3. / 2 / n_hidden)
     h_0 = theano.shared(np.asarray(rng.uniform(low=-bucket,
@@ -489,23 +482,11 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
 
     x, y = initialize_data_nodes(loss_function, input_type, out_every_t)
 
-    #index_permute = np.random.permutation(n_hidden)
 
-    #index_permute_long = np.concatenate((index_permute, index_permute + n_hidden))
     swap_re_im = np.concatenate((np.arange(n_hidden, 2*n_hidden), np.arange(n_hidden)))
 
     # define the recurrence used by theano.scan
     def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, unitary_matrix, V, hidden_bias, out_bias, U):
-
-        # Compute hidden linear transform
-        #step1 = times_diag(h_prev, n_hidden, theta[0,:], swap_re_im)
-        #step2 = do_fft(step1, n_hidden)
-        #step3 = times_reflection(step2, n_hidden, reflection[0,:])
-        #step4 = vec_permutation(step3, index_permute_long)
-        #step5 = times_diag(step4, n_hidden, theta[1,:], swap_re_im)
-        #step6 = do_ifft(step5, n_hidden)
-        #step7 = times_reflection(step6, n_hidden, reflection[1,:])
-        #step8 = times_diag(step7, n_hidden, theta[2,:], swap_re_im)
         unitary_step = unitary_transform(h_prev, n_hidden, unitary_matrix)
 
         hidden_lin_output = unitary_step
