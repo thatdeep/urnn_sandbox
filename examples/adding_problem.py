@@ -6,9 +6,11 @@ import theano.tensor as T
 from theano.ifelse import ifelse
 from layers.models import *
 from utils.optimizations import *
+from numpy import linalg as la
 import argparse
 
 theano.config.exception_verbosity = "high"
+from theano.compile.debugmode import DebugMode
 
 
 def generate_data(time_steps, n_data):
@@ -100,12 +102,15 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
     index = T.iscalar('i')
 
+    learning_rate = theano.shared(np.array(learning_rate, dtype=theano.config.floatX))
+
+
     if model == 'complex_RNN_momentum':
         manifolds = {}
         updates = nesterov_momentum(gradients, parameters, learning_rate, momentum=0.9, manifolds=manifolds)
         rmsprop = []
     if model == 'URNN':
-        updates = nesterov_momentum(gradients, parameters, learning_rate, momentum=0.9, manifolds=manifolds)
+        updates = nesterov_momentum(gradients, parameters, learning_rate, manifolds=manifolds)
         rmsprop = []
     else:
         updates, rmsprop = rms_prop(learning_rate, parameters, gradients)
@@ -124,12 +129,23 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
     # --- Training Loop ---------------------------------------------------------------
 
+    train_mse_res = []
+    test_mse_res = []
+
     train_loss = []
     test_loss = []
     best_params = [p.get_value() for p in parameters]
     best_rms = [r.get_value() for r in rmsprop]
     best_test_loss = 1e6
+    print('Learning rate is {}'.format(learning_rate.get_value()))
     for i in range(n_iter):
+        if False and model == "URNN":
+            unitary_matrix = [p for p in parameters if p.name == "UNITARY"][0]
+            print('How much of unitarity U holds?')
+            uval = unitary_matrix.get_value()
+            uval = uval[0, :, :] + 1j * uval[1, :, :]
+            print("U norm {}".format(la.norm(uval)))
+            print('Delta between U^*U and I: {}'.format(la.norm(np.conj(uval).T.dot(uval) - np.eye(uval.shape[0]))))
         if (n_iter % int(num_batches) == 0):
             inds = np.random.permutation(int(n_train))
             data_x = s_train_x.get_value()
@@ -140,17 +156,27 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
         mse = train(i % int(num_batches))
         train_loss.append(mse)
+        np.array(train_loss).tofile(savefile + '_train_loss.npfile')
         print("Iteration:", i)
         print("mse:", mse)
         print()
 
-        if (i % 50==0):
+        # learn rate annealing
+        if ((i + 1) % 100==0):
+            learning_rate.set_value(learning_rate.get_value() * 0.9)
+            print('Learning rate is decayed. It now becomes {}'.format(learning_rate.get_value()))
+
+
+
+        if ((i + 1) % 25==0):
             mse = test()
             print()
             print("TEST")
             print("mse:", mse)
             print()
             test_loss.append(mse)
+            np.array(test_loss).tofile(savefile + '_test_loss.npfile')
+
 
             if mse < best_test_loss:
                 best_params = [p.get_value() for p in parameters]
@@ -171,6 +197,8 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
             pickle.dump(save_vals,
                          open(savefile, 'wb'),
                          pickle.HIGHEST_PROTOCOL)
+
+
 
         
 
