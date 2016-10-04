@@ -6,6 +6,8 @@ import numpy as np
 from collections import OrderedDict
 
 
+
+
 def clipped_gradients(gradients, gradient_clipping):
     clipped_grads = [T.clip(g, -gradient_clipping, gradient_clipping)
                      for g in gradients]
@@ -36,6 +38,47 @@ def rms_prop(learning_rate, parameters, gradients):
     updates = updates1 + updates2
     return updates, rmsprop
 
+
+def modified_sgd(loss_or_grads, params, learning_rate, manifolds=None):
+    manifolds = manifolds if manifolds else {}
+    grads = lasagne.updates.get_or_compute_grads(loss_or_grads, params)
+    updates = OrderedDict()
+
+    if isinstance(manifolds, dict) and manifolds:
+        for manifold_name in manifolds:
+            # group all paramteters that are belongs to manifold
+            man_param_tuple, man_grad_tuple = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
+                                                              if (hasattr(param, 'name') and manifold_name in param.name))))
+            man_param_pair = {manifold_name: man_param_tuple}
+            man_grad_pair = {manifold_name: man_grad_tuple}
+
+            # remove this parameters from params list and add as one tuple
+            if len(man_param_tuple) == len(grads):
+                params, grads = [], []
+            else:
+                params, grads = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
+                                            if (hasattr(param, 'name') and manifold_name not in param.name))))
+            params = [man_param_pair] + list(params)
+            grads = [man_grad_pair] + list(grads)
+
+    for param, grad in zip(params, grads):
+        if param and isinstance(param, dict):
+            # we have manifold parameters
+            manifold_name = list(param.keys())[0]
+            manifold = manifolds[manifold_name]
+
+            pp = param[manifold_name]
+            gg = grad[manifold_name]
+            if len(pp) == 1:
+                pp, gg = pp[0], gg[0]
+            if manifold._exponential:
+                param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+            else:
+                param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+            updates[pp] = param_updates
+        else:
+            updates[param] = param - learning_rate * grad
+    return updates
 
 
 def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
