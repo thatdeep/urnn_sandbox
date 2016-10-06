@@ -7,8 +7,8 @@ from numpy import random as rnd
 
 
 from utils.theano_complex_extension import complex_reshape, complex_tensordot, apply_mat_to_kronecker
-from utils.theano_complex_extension import apply_complex_mat_to_kronecker
-
+from utils.theano_complex_extension import apply_complex_mat_to_kronecker, np_complex_tensordot
+from utils.theano_complex_extension import np_apply_complex_mat_to_kronecker
 
 
 class TensorDotFunction(unittest.TestCase):
@@ -67,9 +67,11 @@ class TensorDotFunction(unittest.TestCase):
             args = [x, factor]
             func = gen_index_dot(X_reshaped, Factors[i], i)
             computed = func(*args)
+            computed_with_np = np_complex_tensordot(x, factor, axes=[[i+1], 0])
             ethalon = np.tensordot(x_etha, factor[0, ...] + 1j * factor[1, ...], axes=[[i + 1], [0]])
             self.assertEqual(computed.shape[1:], ethalon.shape)
             self.assertTrue(np.allclose(computed[0, ...] + 1j * computed[1, ...], ethalon))
+            self.assertTrue(np.allclose(computed_with_np[0, ...] + 1j * computed_with_np[1, ...], ethalon))
 
     def test_apply_mat_to_kronecker(self):
         ms = (3, 5, 7, 9)
@@ -84,17 +86,19 @@ class TensorDotFunction(unittest.TestCase):
         x = rnd.normal(size=(2, l, m))
         factors = [rnd.normal(size=(2, mm, nn)) for (mm, nn) in zip(ms, ns)]
 
-        func = theano.function([X, ] + Factors, apply_complex_mat_to_kronecker(X, Factors))
+        func = theano.function([X,] + Factors, apply_complex_mat_to_kronecker(X, Factors))
 
         x_etha = x[0, ...] + 1j * x[1, ...]
         etha_factors = [factor[0, ...] + 1j * factor[1, ...] for factor in factors]
 
         print(x.shape)
         print([fac.shape for fac in factors])
-        computed = func(x, factors)
+        computed_with_np = np_apply_complex_mat_to_kronecker(x, factors)
+        computed = func(x, *factors)
         ethalon = apply_mat_to_kronecker(x_etha, etha_factors)
         self.assertEqual(computed.shape[1:], ethalon.shape)
         self.assertTrue(np.allclose(computed[0, ...] + 1j * computed[1, ...], ethalon))
+        self.assertTrue(np.allclose(computed_with_np[0, ...] + 1j * computed_with_np[1, ...], ethalon))
 
 
 if __name__ == '__main__':
