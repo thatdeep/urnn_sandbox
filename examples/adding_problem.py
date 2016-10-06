@@ -37,7 +37,7 @@ def generate_data(time_steps, n_data):
     
     
 def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, input_type, out_every_t, loss_function):
-    
+    LEARNING_RATE = learning_rate
     # --- Set data params ----------------
     n_input = 2
     n_output = 1
@@ -139,7 +139,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     best_test_loss = 1e6
     print('Learning rate is {}'.format(learning_rate.get_value()))
     for i in range(n_iter):
-        if False and model == "URNN":
+        if True and model == "URNN":
             unitary_matrix = [p for p in parameters if p.name == "UNITARY"][0]
             print('How much of unitarity U holds?')
             uval = unitary_matrix.get_value()
@@ -156,14 +156,15 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
         mse = train(i % int(num_batches))
         train_loss.append(mse)
-        np.array(train_loss).tofile(savefile + '_train_loss.npfile')
+        np.array(train_loss).tofile('results/{}_{}_{}_{}_'.\
+                                    format(n_batch, n_hidden, time_steps, LEARNING_RATE) + savefile + '_train_loss.npfile')
         print("Iteration:", i)
         print("mse:", mse)
         print()
 
         # learn rate annealing
-        if ((i + 1) % 100==0):
-            learning_rate.set_value(learning_rate.get_value() * 0.9)
+        if ((i + 1) % 50==0):
+            learning_rate.set_value(learning_rate.get_value() * 0.7)
             print('Learning rate is decayed. It now becomes {}'.format(learning_rate.get_value()))
 
 
@@ -175,7 +176,8 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
             print("mse:", mse)
             print()
             test_loss.append(mse)
-            np.array(test_loss).tofile(savefile + '_test_loss.npfile')
+            np.array(test_loss).tofile('results/{}_{}_{}_{}_'.\
+                                       format(n_batch, n_hidden, time_steps, LEARNING_RATE) + savefile + '_test_loss.npfile')
 
 
             if mse < best_test_loss:
@@ -195,7 +197,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
                          'time_steps': time_steps}
 
             pickle.dump(save_vals,
-                         open(savefile, 'wb'),
+                         open('results/{}_{}_{}_{}_'.format(n_batch, n_hidden, time_steps, LEARNING_RATE) + savefile, 'wb'),
                          pickle.HIGHEST_PROTOCOL)
 
 

@@ -73,6 +73,7 @@ def modified_sgd(loss_or_grads, params, learning_rate, manifolds=None):
                 pp, gg = pp[0], gg[0]
             if manifold._exponential:
                 param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+                param_updates = manifold.get_back(param_updates)
             else:
                 param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
             updates[pp] = param_updates
