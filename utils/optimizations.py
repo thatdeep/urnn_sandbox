@@ -107,6 +107,9 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
     grads = lasagne.updates.get_or_compute_grads(loss_or_grads, params)
     updates = OrderedDict()
 
+    manifold_param_stack = []
+    manifold_grad_stack = []
+
     if isinstance(manifolds, dict) and manifolds:
 
         for manifold_name in manifolds:
@@ -120,8 +123,13 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
             else:
                 params, grads = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
                                             if (hasattr(param, 'name') and manifold_name not in param.name))))
-            params = [manifold_tuple] + list(params)
-            grads = [manifold_grads_tuple] + list(grads)
+            manifold_param_stack.append(manifold_tuple)
+            manifold_grad_stack.append(manifold_grads_tuple)
+            params = list(params)
+            grads = list(grads)
+
+    params = manifold_param_stack + params
+    grads = manifold_grad_stack + grads
 
     for param, grad in zip(params, grads):
         if param and isinstance(param, dict) and len(param) == 1 and isinstance(list(param.values())[0], tuple):# and "fixed_rank" in param[0].name:

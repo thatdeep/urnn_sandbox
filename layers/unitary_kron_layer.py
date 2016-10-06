@@ -6,21 +6,7 @@ import theano.tensor as T
 from manifolds import UnitaryKron
 
 
-def apply_mat_to_kronecker(x, matrices):
-    x = x.reshape((x.shape[0],) + tuple(mat.shape[0] for mat in matrices))
-    result = x
-    for mat in matrices:
-        result = T.tensordot(result, mat, axes=([1], [0]))
-    return result.reshape((x.shape[0], -1))
-
-
-def complex_tensordot(a, b, axes=2):
- if type(axes) in _numberTypes: return dot(a.reshape_2d(a.ndim-axes), b.reshape_2d(axes)).reshape(a.shape[:a.ndim-axes] + b.shape[axes:])
- assert len(axes)==2 and len(axes[0])==len(axes[1]), 'the axes parameter to gnumpy.tensordot looks bad'
- aRemove, bRemove = (tuple(axes[0]), tuple(axes[1]))
- return complex_tensordot(a.transpose(filter(lambda x: x not in aRemove, tuple(range(a.ndim))) + aRemove),
-                          b.transpose(bRemove + filter(lambda x: x not in bRemove, tuple(range(b.ndim)))),
-                          len(aRemove))
+from utils.theano_complex_extension import apply_complex_mat_to_kronecker
 
 
 class UnitaryLayer(lasagne.layers.Layer):
@@ -36,17 +22,23 @@ class UnitaryLayer(lasagne.layers.Layer):
 
         U = self.manifold.rand_np()
         basename = kwargs.get('name', '')
-        self.U = self.add_param(U, (2, self.n_hidden, self.n_hidden), name=basename + "U", regularizable=False)
+
+        attr_names = ["U" + i for i in range(len(partition))]
+        unique_ids = [man.str_id() for man in self.manifold._manifolds]
+        for attr_name, unique_id, Ui, dimsize in zip(attr_names, unique_ids, U, partition):
+            added_param = self.add_param(Ui, (2, dimsize, dimsize), name=basename + "U" + unique_id, regularizable=False)
+            setattr(self, attr_name, added_param)
+        #self.U = self.add_param(U, (2, self.n_hidden, self.n_hidden), name=basename + "U", regularizable=False)
 
     def get_output_for(self, input, **kwargs):
-        UR, UI = self.manifold.frac(self.U)
         if input.ndim > 2:
             # if the input has more than two dimensions, flatten it into a
             # batch of feature vectors.
             input = input.flatten(2)
         unitary_input = T.reshape(input, (input.shape[0], 2, self.num_inputs))
-        IR, II = unitary_input[:, 0, :], unitary_input[:, 1, :]
-        output = T.stack([IR.dot(UR) - II.dot(UI), IR.dot(UR) + II.dot(UR)], axis=1)
+        unitary_input = T.transpose(unitary_input, (1, 0, 2))
+        U = (getattr(self, "U" + i) for i in range(len(self.partition)))
+        output = apply_complex_mat_to_kronecker(unitary_input, U)
         output = output.reshape((input.shape[0], -1))
         return output
 

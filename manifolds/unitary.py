@@ -45,32 +45,21 @@ class Unitary(Manifold):
     Contributors:
     Change log:
     """
-    def __init__(self, n, p=None, k=None):
-        if p is None:
-            p = n
-        if k is None:
-            k = 1
+    def __init__(self, n):
         if n <= 0:
             raise ValueError('n must be at least 1')
-        if k <= 0:
-            raise ValueError('k must be 1 or greater')
-        if p > n:
-            raise ValueError('p must be less or equal than n')
         self._n = n
-        self._p = p
         # I didn't implement it for k > 1
-        self._k = 1
-
-        if k == 1:
-            self._name = 'Complex Stiefel manifold St({}, {})'.format(n, p)
-        else:
-            self._name = 'Product complex Stiefel manifold St({}, {})^{}'.format(n, p, k)
+        self._name = 'Unitary manifold U({}) = St({}, {})'.format(n, n, n)
         self._exponential = False
-
 
     @property
     def name(self):
         return self._name
+
+    @property
+    def short_name(self):
+        return "Unitary({})".format(self._n)
 
     @property
     def dim(self):
@@ -190,8 +179,8 @@ class Unitary(Manifold):
         raise NotImplementedError
 
     def rand_np(self):
-        Q, unused = la.qr(rnd.normal(size=(self._n, self._p)) +
-                          1j * rnd.normal(size=(self._n, self._p)))
+        Q, unused = la.qr(rnd.normal(size=(self._n, self._n)) +
+                          1j * rnd.normal(size=(self._n, self._n)))
         return np.stack([Q.real, Q.imag])
 
     def zeros(self):
@@ -204,13 +193,13 @@ class Unitary(Manifold):
         return np.stack([np.identity(self._n), np.zeros((self._n, self._n))])
 
     def rand(self):
-        Q, unused = tensor.nlinalg.qr(srnd.normal(size=(self._n, self._p)) +
-                          1j * srnd.normal(size=(self._n, self._p)))
+        Q, unused = tensor.nlinalg.qr(srnd.normal(size=(self._n, self._n)) +
+                          1j * srnd.normal(size=(self._n, self._n)))
         return tensor.stack[Q.real, Q.imag]
 
     def randvec(self, X):
-        U = self.proj(X, tensor.stack([rnd.normal(size=(self._n, self._p)),
-                          1j * rnd.normal(size=(self._n, self._p))]))
+        U = self.proj(X, tensor.stack([rnd.normal(size=(self._n, self._n)),
+                          1j * rnd.normal(size=(self._n, self._n))]))
         U = U / self.norm(X, U)
         return tensor.stack([U.real, U.imag])
 

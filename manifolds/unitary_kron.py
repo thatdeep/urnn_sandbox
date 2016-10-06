@@ -10,11 +10,15 @@ class UnitaryKron(Manifold):
         self._manifolds = tuple(Unitary(n=n) for n in nd)
         self.n = int(np.prod(nd))
         self.n_factors = len(nd)
-        self._name = "Product of Stiefel unitary manifolds of dims {}".format(nd)
+        self._name = "Product of Unitary manifolds of dims {}".format(nd)
 
     @property
     def name(self):
         return self._name
+
+    @property
+    def short_name(self):
+        return "UnitaryKron({})".format(tuple(manifold._n for manifold in self._manifolds))
 
     @property
     def dim(self):

@@ -14,6 +14,11 @@ class Manifold(object):
         raise NotImplementedError
 
     @abc.abstractproperty
+    def short_name(self):
+        # Name of the manifold.
+        raise NotImplementedError
+
+    @abc.abstractproperty
     def dim(self):
         # Dimension of the manifold
         raise NotImplementedError
@@ -90,6 +95,10 @@ class Manifold(object):
         # The logarithm (in the sense of Lie group theory) of Y. This is the
         # inverse of exp.
         raise NotImplementedError
+
+    @property
+    def str_id(self):
+        return "{}[{}]".format(self.short_name, id(self))
 
     def zerovec(self, X):
         """
