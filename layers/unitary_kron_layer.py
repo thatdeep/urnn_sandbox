@@ -9,11 +9,11 @@ from manifolds import UnitaryKron
 from utils.theano_complex_extension import apply_complex_mat_to_kronecker
 
 
-class UnitaryLayer(lasagne.layers.Layer):
+class UnitaryKronLayer(lasagne.layers.Layer):
     def __init__(self, incoming, partition, **kwargs):
-        super(UnitaryLayer, self).__init__(incoming, **kwargs)
+        super(UnitaryKronLayer, self).__init__(incoming, **kwargs)
         num_inputs = int(np.prod(self.input_shape[1:]))
-        self.n_inputs = num_inputs
+        self.num_inputs = num_inputs // 2
         self.n_hidden = num_inputs // 2
         self.shape = (self.n_hidden, self.n_hidden)
         self.partition = partition
@@ -23,8 +23,8 @@ class UnitaryLayer(lasagne.layers.Layer):
         U = self.manifold.rand_np()
         basename = kwargs.get('name', '')
 
-        attr_names = ["U" + i for i in range(len(partition))]
-        unique_ids = [man.str_id() for man in self.manifold._manifolds]
+        attr_names = ["U" + str(i) for i in range(len(partition))]
+        unique_ids = [man.str_id for man in self.manifold._manifolds]
         for attr_name, unique_id, Ui, dimsize in zip(attr_names, unique_ids, U, partition):
             added_param = self.add_param(Ui, (2, dimsize, dimsize), name=basename + "U" + unique_id, regularizable=False)
             setattr(self, attr_name, added_param)
@@ -37,7 +37,7 @@ class UnitaryLayer(lasagne.layers.Layer):
             input = input.flatten(2)
         unitary_input = T.reshape(input, (input.shape[0], 2, self.num_inputs))
         unitary_input = T.transpose(unitary_input, (1, 0, 2))
-        U = (getattr(self, "U" + i) for i in range(len(self.partition)))
+        U = tuple(getattr(self, "U" + str(i)) for i in range(len(self.partition)))
         output = apply_complex_mat_to_kronecker(unitary_input, U)
         output = output.reshape((input.shape[0], -1))
         return output

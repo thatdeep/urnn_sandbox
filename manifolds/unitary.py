@@ -45,9 +45,12 @@ class Unitary(Manifold):
     Contributors:
     Change log:
     """
-    def __init__(self, n):
+    def __init__(self, n, retr_type='svd'):
         if n <= 0:
             raise ValueError('n must be at least 1')
+        if retr_type not in ['svd', 'qr']:
+            raise ValueError('retr_type mist be either "svd" or "qr"')
+        self.retr_type = retr_type
         self._n = n
         # I didn't implement it for k > 1
         self._name = 'Unitary manifold U({}) = St({}, {})'.format(n, n, n)
@@ -148,9 +151,12 @@ class Unitary(Manifold):
     def retr(self, X, U):
         YR, YI = self.frac(X + U)
 
-        Q, R = tensor.nlinalg.qr(YR + 1j * YI)
+        #Q, R = tensor.nlinalg.qr(YR + 1j * YI)
         #Y = Q.dot(T.diag(T.sgn(T.sgn(T.diag(R))+.5)))
-        Y = tensor.stack([Q.real, Q.imag])
+        #Y = tensor.stack([Q.real, Q.imag])
+        U, S, V = tensor.nlinalg.svd(YR + 1j * YI, full_matrices=False)
+        Y = U.dot(tensor.eye(S.size)).dot(V)
+        Y = tensor.stack([Y.real, Y.imag])
         return Y
 
     def get_back(self, X):
@@ -162,14 +168,14 @@ class Unitary(Manifold):
     def concat(self, arrays, axis):
         return tensor.concatenate(arrays, axis=axis+1)
 
-    def exp(self, X, U):
+    def exp(self, X, U, t):
         # The exponential (in the sense of Lie group theory) of a tangent
         # vector U at X.
         first = self.concat([X, U], axis=1)
         XhU = self.complex_dot(self.hconj(X), U)
-        second = complex_expm(self.concat([self.concat([XhU, -self.complex_dot(self.hconj(U), U)], 1),
+        second = complex_expm(t * self.concat([self.concat([XhU, -self.complex_dot(self.hconj(U), U)], 1),
                                   self.concat([self.identity(), XhU], 1)], 0))
-        third = self.concat([complex_expm(-XhU), self.zeros()], 0)
+        third = self.concat([t * complex_expm(-XhU), self.zeros()], 0)
         exponential = self.complex_dot(self.complex_dot(first, second), third)
         return exponential
 

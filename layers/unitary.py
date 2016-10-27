@@ -10,14 +10,14 @@ class UnitaryLayer(lasagne.layers.Layer):
     def __init__(self, incoming, **kwargs):
         super(UnitaryLayer, self).__init__(incoming, **kwargs)
         num_inputs = int(np.prod(self.input_shape[1:]))
-        self.n_inputs = num_inputs
+        self.num_inputs = num_inputs // 2
         self.n_hidden = num_inputs // 2
         self.shape = (self.n_hidden, self.n_hidden)
         self.manifold = Unitary(self.n_hidden)
 
         U = self.manifold.rand_np()
         basename = kwargs.get('name', '')
-        self.U = self.add_param(U, (2, self.n_hidden, self.n_hidden), name=basename + "U", regularizable=False)
+        self.U = self.add_param(U, (2, self.n_hidden, self.n_hidden), name=basename + "U" + self.manifold.str_id, regularizable=False)
 
     def get_output_for(self, input, **kwargs):
         UR, UI = self.manifold.frac(self.U)

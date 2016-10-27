@@ -71,6 +71,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
         gradients = T.grad(costs[0], parameters)
+
     elif (model == 'complex_RNN'):
         inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
@@ -78,6 +79,15 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
     elif (model == 'URNN'):
         inputs, parameters, costs, manifolds = URNN(n_input, n_hidden, n_output, input_type=input_type,
+                                                    out_every_t=out_every_t, loss_function=loss_function)
+        gradients = T.grad(costs[0], parameters)
+
+    elif (model == 'UKRNN'):
+        #assert(int(np.sqrt(n_hidden))**2 == n_hidden)
+        #nsq = int(np.sqrt(n_hidden))
+        #partition = (nsq, nsq)
+        partition = (2, 3, 4, 5)
+        inputs, parameters, costs, manifolds = UKRNN(n_input, n_hidden, partition, n_output, input_type=input_type,
                                                     out_every_t=out_every_t, loss_function=loss_function)
         gradients = T.grad(costs[0], parameters)
 
@@ -110,6 +120,17 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         updates = nesterov_momentum(gradients, parameters, learning_rate, momentum=0.9, manifolds=manifolds)
         rmsprop = []
     if model == 'URNN':
+        for manifold in manifolds.values():
+            if hasattr(manifold, '_exponential') and manifold._exponential:
+                manifold._exponential = False
+        retr_updates = nesterov_momentum(gradients, parameters, learning_rate, manifolds=manifolds)
+        for manifold in manifolds.values():
+            if hasattr(manifold, '_exponential') and not manifold._exponential:
+                manifold._exponential = True
+        exp_updates = nesterov_momentum(gradients, parameters, learning_rate, manifolds=manifolds)
+        updates = retr_updates
+        rmsprop = []
+    if model == 'UKRNN':
         updates = nesterov_momentum(gradients, parameters, learning_rate, manifolds=manifolds)
         rmsprop = []
     else:
@@ -123,6 +144,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     
     
     train = theano.function([index], costs[0], givens=givens, updates=updates)
+    train_retr = theano.function([index], costs[0], givens=givens, updates=retr_updates)
     
     test = theano.function([], costs[0], givens=givens_test)
 
@@ -139,7 +161,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     best_test_loss = 1e6
     print('Learning rate is {}'.format(learning_rate.get_value()))
     for i in range(n_iter):
-        if True and model == "URNN":
+        if False and model == "URNN":
             unitary_matrix = [p for p in parameters if p.name == "UNITARY"][0]
             print('How much of unitarity U holds?')
             uval = unitary_matrix.get_value()
@@ -153,8 +175,12 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
             data_y = s_train_y.get_value()
             s_train_y.set_value(data_y[inds,:])
 
+        if ((i + 1)%10 == 0):
+            mse = train_retr(i % int(num_batches))
+        else:
+            mse = train(i % int(num_batches))
 
-        mse = train(i % int(num_batches))
+
         train_loss.append(mse)
         np.array(train_loss).tofile('results/{}_{}_{}_{}_'.\
                                     format(n_batch, n_hidden, time_steps, LEARNING_RATE) + savefile + '_train_loss.npfile')
@@ -163,11 +189,9 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         print()
 
         # learn rate annealing
-        if ((i + 1) % 50==0):
-            learning_rate.set_value(learning_rate.get_value() * 0.7)
+        if ((i + 1) % 500==0):
+            learning_rate.set_value(learning_rate.get_value() * 0.9)
             print('Learning rate is decayed. It now becomes {}'.format(learning_rate.get_value()))
-
-
 
         if ((i + 1) % 25==0):
             mse = test()

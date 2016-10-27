@@ -1,13 +1,11 @@
-import theano, pickle
+import theano
 import theano.tensor as T
 import numpy as np
 from utils.fftconv import cufft, cuifft
 
-from layers.unitary import UnitaryLayer
-from manifolds import Unitary
+from manifolds import Unitary, UnitaryKron
 
-import lasagne
-
+from utils.theano_complex_extension import apply_complex_mat_to_kronecker
 NP_FLOAT = np.float64
 INT_STR = 'int64'
 FLOAT_STR = 'float64'
@@ -46,32 +44,12 @@ def unitary_transform(input, n_hidden, U):
     return output
 
 
-class UnitaryLayer(lasagne.layers.Layer):
-    def __init__(self, incoming, **kwargs):
-        super(UnitaryLayer, self).__init__(incoming, **kwargs)
-        num_inputs = int(np.prod(self.input_shape[1:]))
-        self.num_inputs = num_inputs
-        self.num_units = num_inputs
-        self.shape = (self.num_inputs, self.num_inputs)
-        self.manifold = Unitary(self.num_inputs//2)
-
-        U = self.manifold.rand_np()
-        basename = kwargs.get('name', '')
-        self.U = self.add_param(U, (2, self.num_inputs//2, self.num_inputs//2), name=basename + "U", regularizable=False)
-
-    def get_output_for(self, input, **kwargs):
-        UR, UI = self.manifold.frac(self.U)
-        if input.ndim > 2:
-            # if the input has more than two dimensions, flatten it into a
-            # batch of feature vectors.
-            input = input.flatten(2)
-        IR, II = input[:, :input.shape[1]//2], input[:, input.shape[1]//2:]
-        return T.stack([IR.dot(UR) - II.dot(UI), IR.dot(UR) + II.dot(UI)], 1).reshape((input.shape[0], -1))
-
-    def get_output_shape_for(self, input_shape):
-        if len(input_shape) > 2:
-            return (input_shape[0], int(np.prod(input_shape[1:])))
-        return input_shape
+def unitary_kron_transform(input, n_hidden, U):
+    unitary_input = T.reshape(input, (input.shape[0], 2, n_hidden))
+    unitary_input = T.transpose(unitary_input, (1, 0, 2))
+    output = apply_complex_mat_to_kronecker(unitary_input, U)
+    output = output.reshape((input.shape[0], -1))
+    return output
 
 
 def times_diag(input, n_hidden, diag, swap_re_im):
@@ -227,7 +205,6 @@ def tanhRNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, l
         else:
             cost_t = theano.shared(NP_FLOAT(0.0))
             acc_t = theano.shared(NP_FLOAT(0.0))
-
         return h_t, cost_t, acc_t
 
     non_sequences = [V, W, hidden_bias, out_mat, out_bias]
@@ -543,6 +520,99 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
     return [x, y], parameters, costs, manifolds
 
 
+def UKRNN(n_input, n_hidden, partition, n_output, input_type='real', out_every_t=False, loss_function='CE'):
+
+    np.random.seed(1234)
+    rng = np.random.RandomState(1234)
+
+    # Initialize parameters: theta, V_re, V_im, hidden_bias, U, out_bias, h_0
+    V = initialize_matrix(n_input, 2*n_hidden, 'V', rng)
+    U = initialize_matrix(2 * n_hidden, n_output, 'U', rng)
+    hidden_bias = theano.shared(np.asarray(rng.uniform(low=-0.01,
+                                                       high=0.01,
+                                                       size=(n_hidden,)),
+                                           dtype=theano.config.floatX),
+                                name='hidden_bias')
+    kron_manifold = UnitaryKron(partition)
+
+    MANIFOLD_NAMES = [manifold.str_id for manifold in kron_manifold._manifolds]
+    UK = [theano.shared(value=manifold.rand_np(), name=manifold.str_id) for manifold in kron_manifold._manifolds]
+    manifolds = {manifold.str_id: manifold for manifold in kron_manifold._manifolds}
+
+
+    out_bias = theano.shared(np.zeros((n_output,), dtype=theano.config.floatX), name='out_bias')
+
+    bucket = np.sqrt(3. / 2 / n_hidden)
+    h_0 = theano.shared(np.asarray(rng.uniform(low=-bucket,
+                                               high=bucket,
+                                               size=(1, 2 * n_hidden)),
+                                   dtype=theano.config.floatX),
+                        name='h_0')
+
+    parameters = [V, U, hidden_bias] + UK + [out_bias, h_0]
+
+    x, y = initialize_data_nodes(loss_function, input_type, out_every_t)
+
+
+    swap_re_im = np.concatenate((np.arange(n_hidden, 2*n_hidden), np.arange(n_hidden)))
+
+    # define the recurrence used by theano.scan
+    def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, V, hidden_bias, out_bias, U, *UK):
+        #unitary_step = unitary_transform(h_prev, n_hidden, unitary_matrix)
+        unitary_step = unitary_kron_transform(h_prev, n_hidden, UK)
+
+        hidden_lin_output = unitary_step
+
+        # Compute data linear transform
+        if loss_function == 'CE':
+            data_lin_output = V[T.cast(x_t, INT_STR)]
+        else:
+            data_lin_output = T.dot(x_t, V)
+
+        # Total linear output
+        lin_output = hidden_lin_output + data_lin_output
+
+
+        # Apply non-linearity ----------------------------
+
+        # scale RELU nonlinearity
+        modulus = T.sqrt(lin_output**2 + lin_output[:, swap_re_im]**2)
+        rescale = T.maximum(modulus + T.tile(hidden_bias, [2]).dimshuffle('x', 0), 0.) / (modulus + 1e-5)
+        h_t = lin_output * rescale
+
+        if out_every_t:
+            lin_output = T.dot(h_t, U) + out_bias.dimshuffle('x', 0)
+            cost_t, acc_t = compute_cost_t(lin_output, loss_function, y_t)
+        else:
+            cost_t = theano.shared(NP_FLOAT(0.0))
+            acc_t = theano.shared(NP_FLOAT(0.0))
+
+        return h_t, cost_t, acc_t
+
+    # compute hidden states
+    h_0_batch = T.tile(h_0, [x.shape[1], 1])
+    non_sequences = [V, hidden_bias, out_bias, U] + UK
+    if out_every_t:
+        sequences = [x, y]
+    else:
+        sequences = [x, T.tile(theano.shared(np.zeros((1,1), dtype=theano.config.floatX)), [x.shape[0], 1, 1])]
+
+    outputs_info=[h_0_batch, theano.shared(NP_FLOAT(0.0)), theano.shared(NP_FLOAT(0.0))]
+
+    [hidden_states, cost_steps, acc_steps], updates = theano.scan(fn=recurrence,
+                                                                  sequences=sequences,
+                                                                  non_sequences=non_sequences,
+                                                                  outputs_info=outputs_info)
+
+    if not out_every_t:
+        lin_output = T.dot(hidden_states[-1,:,:], U) + out_bias.dimshuffle('x', 0)
+        costs = compute_cost_t(lin_output, loss_function, y)
+    else:
+        cost = cost_steps.mean()
+        accuracy = acc_steps.mean()
+        costs = [cost, accuracy]
+
+    return [x, y], parameters, costs, manifolds
 
 
  

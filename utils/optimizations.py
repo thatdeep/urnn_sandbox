@@ -71,10 +71,6 @@ def modified_sgd(loss_or_grads, params, learning_rate, manifolds=None):
             gg = grad[manifold_name]
             if len(pp) == 1:
                 pp, gg = pp[0], gg[0]
-            if manifold._exponential:
-                param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
-                param_updates = manifold.get_back(param_updates)
-            else:
                 param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
             updates[pp] = param_updates
         else:
@@ -152,7 +148,8 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
                 if len(pp) == 1:
                     pp, gg = pp[0], gg[0]
                 if hasattr(manifold, '_exponential') and manifold._exponential:
-                    param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
+                    param_updates = manifold.exp(pp, manifold.proj(pp, gg), -learning_rate)
+                    #param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
                 else:
                     param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
                 updates[pp] = param_updates
@@ -341,7 +338,8 @@ def apply_nesterov_momentum(updates, params=None, momentum=0.9, manifolds=None):
                 x = manifold.transp(lone_param, update_for_transport, multiplied)
                 updates[velocity] = x
                 if hasattr(manifold, '_exponential') and manifold._exponential:
-                    result = manifold.exp(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
+                    result = manifold.exp(updates[lone_param], x, momentum)
+                    #result = manifold.exp(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
                 else:
                     result = manifold.retr(updates[lone_param], manifold.lincomb(updates[lone_param], momentum, x))
                 updates[lone_param] = result
