@@ -9,6 +9,8 @@ from manifolds.manifold import Manifold
 from utils.complex_expm import complex_expm
 from theano.tensor.shared_randomstreams import RandomStreams
 
+from utils.theano_complex_extension import frac, identity, zeros, complex_dot, hconj
+
 
 srnd = RandomStreams(rnd.randint(0, 1000))
 
@@ -71,66 +73,29 @@ class Unitary(Manifold):
     def typicaldist(self):
         return np.sqrt(self._p, self._k)
 
-    def frac(self, A):
-        return A[0, :, :], A[1, :, :]
-
-    def complex_dot_(self, A, B):
-        A_real, A_imag = self.frac(A)
-        B_real, B_imag = self.frac(B)
-        re = A_real.dot(B_real) - A_imag.dot(B_imag)
-        im = A_real.dot(B_imag) + A_imag.dot(B_real)
-
-        return tensor.stack([re, im], axis=0)
-
-    def complex_dot(self, A, B):
-        A_real, A_imag = self.frac(A)
-        B_real, B_imag = self.frac(B)
-        prod = tensor.zeros((2, A_real.shape[0], B_real.shape[1]))
-        prod = tensor.set_subtensor(prod[0, :, :], A_real.dot(B_real) - A_imag.dot(B_imag))
-        prod = tensor.set_subtensor(prod[1, :, :], A_real.dot(B_imag) + A_imag.dot(B_real))
-        return prod
-
-    def transpose(self, X):
-        return tensor.transpose(X, axes=(0, 2, 1))
-
-    def conj(self, X):
-        X_conj = tensor.copy(X)
-        tensor.set_subtensor(X[1, :, :], -1 * X[1, :, :])
-        return X_conj
-
-    def hconj(self, X):
-        XR, XI = self.frac(X)
-        X_hconj = tensor.transpose(X, axes=(0, 2, 1))
-        #X_hconj = T.zeros((2,) + XR.T.shape)
-        #T.set_subtensor(X_hconj[0, :, :], XR.T)
-        X_hconj = tensor.set_subtensor(X_hconj[1, :, :], -1 * X_hconj[1, :, :])
-        return X_hconj
-
     def inner(self, X, G, H):
-        GR, GI = self.frac(G)
-        HR, HI = self.frac(H)
+        GR, GI = frac(G)
+        HR, HI = frac(H)
         # (AR + iAI)(BR + iBI) = ARBR - AIBI + i(ARBI + AIBR)
         # we return only real part of sum(hadamard(G, H))
         # old # return T.real(T.sum((GR + 1j * GI) *(HR + 1j * HI)))
         return tensor.sum(GR * HR - GI * HI)
 
     def norm(self, X, G):
-        GR, GI = self.frac(G)
+        GR, GI = frac(G)
         return (GR + 1j * GI).norm()
 
     def dist(self, X, Y):
         raise NotImplementedError
 
     def herm(self, X):
-        XH = self.hconj(X)
+        XH = hconj(X)
         return 0.5 * (X + XH)
 
     def proj(self, X, U):
-        XHU = self.complex_dot(self.hconj(X), U)
-        #XHU = X.conj().dot(U)
+        XHU = complex_dot(hconj(X), U)
         herXHU = self.herm(XHU)
-        #Up = U - X.dot(herXHU)
-        Up = U - self.complex_dot(X, herXHU)
+        Up = U - complex_dot(X, herXHU)
         return Up
 
     def tangent(self, X, U):
@@ -140,10 +105,10 @@ class Unitary(Manifold):
         return self.proj(X, U)
 
     def ehess2rhess(self, X, egrad, ehess, H):
-        XHG = self.complex_dot(self.hconj(X), egrad)
+        XHG = complex_dot(hconj(X), egrad)
         #XHG = X.conj().dot(egrad)
         herXHG = self.herm(XHG)
-        HherXHG = self.complex_dot(H, herXHG)
+        HherXHG = complex_dot(H, herXHG)
         rhess = self.proj(X, ehess - HherXHG)
         return rhess
 
@@ -151,11 +116,11 @@ class Unitary(Manifold):
         if mode == "exp":
             return self.exp(X, U)
         elif mode == "qr":
-            YR, YI = self.frac(X + U)
+            YR, YI = frac(X + U)
             Q, R = tensor.nlinalg.qr(YR + 1j * YI)
             Y = tensor.stack([Q.real, Q.imag])
         elif mode == "svd":
-            YR, YI = self.frac(X + U)
+            YR, YI = frac(X + U)
             U, S, V = tensor.nlinalg.svd(YR + 1j * YI, full_matrices=False)
             Y = U.dot(tensor.eye(S.size)).dot(V)
             Y = tensor.stack([Y.real, Y.imag])
@@ -172,11 +137,11 @@ class Unitary(Manifold):
         # The exponential (in the sense of Lie group theory) of a tangent
         # vector U at X.
         first = self.concat([X, U], axis=1)
-        XhU = self.complex_dot(self.hconj(X), U)
-        second = complex_expm(self.concat([self.concat([XhU, -self.complex_dot(self.hconj(U), U)], 1),
-                                  self.concat([self.identity(), XhU], 1)], 0))
-        third = self.concat([complex_expm(-XhU), self.zeros()], 0)
-        exponential = self.complex_dot(self.complex_dot(first, second), third)
+        XhU = complex_dot(hconj(X), U)
+        second = complex_expm(self.concat([self.concat([XhU, -complex_dot(hconj(U), U)], 1),
+                                  self.concat([identity(self._n), XhU], 1)], 0))
+        third = self.concat([complex_expm(-XhU), zeros((self._n, self._n))], 0)
+        exponential = complex_dot(complex_dot(first, second), third)
         return exponential
 
     def log(self, X, Y):

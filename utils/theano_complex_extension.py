@@ -18,6 +18,14 @@ def imag(A):
     return A[1, :, :]
 
 
+def zeros(shape):
+    return tensor.zeros((2,) + shape)
+
+
+def identity(n):
+    return tensor.eye(n)
+
+
 def complex_dot(A, B):
     A_real, A_imag = frac(A)
     B_real, B_imag = frac(B)
@@ -27,19 +35,19 @@ def complex_dot(A, B):
     return prod
 
 
-def transpose(self, X):
+def transpose(X):
     if X.ndim - 1 > 2:
         raise ValueError("only matrix transpose is allowed, but X have dimension {}".format(X.ndim - 1))
     return tensor.transpose(X, axes=(0, 2, 1))
 
 
-def conj(self, X):
+def conj(X):
     X_conj = tensor.copy(X)
     tensor.set_subtensor(X[1, :, :], -1 * X[1, :, :])
     return X_conj
 
 
-def hconj(self, X):
+def hconj(X):
     X_hconj = tensor.transpose(X, axes=(0, 2, 1))
     X_hconj = tensor.set_subtensor(X_hconj[1, :, :], -1 * X_hconj[1, :, :])
     return X_hconj
@@ -49,9 +57,6 @@ def complex_reshape(x, shape, ndim=None):
     if ndim is not None:
         return x.reshape(tensor.concatenate([(2,), shape]), ndim + 1)
     return x.reshape((2,) + shape, ndim)
-
-
-
 
 
 def complex_tensordot(a, b, axes=2):
