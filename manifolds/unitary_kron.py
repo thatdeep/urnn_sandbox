@@ -3,6 +3,8 @@ import numpy as np
 from .unitary import Unitary
 from .manifold import Manifold
 
+from utils.theano_complex_extension import transpose, complex_dot, conj, hconj
+
 
 class UnitaryKron(Manifold):
     def __init__(self, nd,retr_mode="svd"):
@@ -40,17 +42,17 @@ class UnitaryKron(Manifold):
     def complex_dot(self, A, B):
         prod = []
         for (a, b, manifold) in zip(A, B, self._manifolds):
-            prod.append(manifold.complex_dot(a, b))
+            prod.append(complex_dot(a, b))
         return tuple(prod)
 
     def transpose(self, X):
-        return tuple(manifold.transpose(x) for (manifold, x) in zip(self._manifolds, X))
+        return tuple(transpose(x) for (manifold, x) in zip(self._manifolds, X))
 
     def conj(self, X):
-        return tuple(manifold.conj(x) for (manifold, x) in zip(self._manifolds, X))
+        return tuple(conj(x) for (manifold, x) in zip(self._manifolds, X))
 
     def hconj(self, X):
-        return tuple(manifold.hconj(x) for (manifold, x) in zip(self._manifolds, X))
+        return tuple(hconj(x) for (manifold, x) in zip(self._manifolds, X))
 
     def inner(self, X, G, H):
         raise NotImplementedError
