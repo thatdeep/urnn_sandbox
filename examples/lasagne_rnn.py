@@ -12,16 +12,16 @@ from lasagne.nonlinearities import rectify
 
 np.set_printoptions(linewidth=200, suppress=True)
 
-theano.config.exception_verbosity='high'
+#theano.config.exception_verbosity='high'
 #theano.config.mode='DebugMode'
-theano.config.optimizer='None'
+#theano.config.optimizer='None'
 
 
 # Min/max sequence length
 MIN_LENGTH = 50
-MAX_LENGTH = 55
+MAX_LENGTH = 51
 # Number of units in the hidden (recurrent) layer
-N_HIDDEN = 256
+N_HIDDEN = 22
 # Number of training sequences in each batch
 N_BATCH = 100
 # Optimization learning rate
@@ -31,7 +31,7 @@ GRAD_CLIP = 100
 # How often should we check the output?
 EPOCH_SIZE = 100
 # Number of epochs to train the net
-NUM_EPOCHS = 200
+NUM_EPOCHS = 600
 # Exact sequence length
 TIME_SEQUENCES=100
 
@@ -161,6 +161,9 @@ class ModRelu(lasagne.layers.Layer):
 if __name__ == "__main__":
     print("Building network ...")
     N_INPUT=2
+    learning_rate = theano.shared(np.array(LEARNING_RATE, dtype=theano.config.floatX))
+
+
 
     # input layer of shape (n_batch, n_timestems, n_input)
     l_in = lasagne.layers.InputLayer(shape=(None, MAX_LENGTH, N_INPUT))
@@ -170,13 +173,16 @@ if __name__ == "__main__":
 
     # define input-to-hidden and hidden-to-hidden linear transformations
     l_in_hid = lasagne.layers.DenseLayer(lasagne.layers.InputLayer((None, N_INPUT)), N_HIDDEN * 2)
+    #l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
     l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+
     #l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [4]*4, [2]*3)
 
     manifold = l_hid_hid.manifold
     if not isinstance(manifold, list):
         manifold = [manifold]
     manifolds = {man.str_id: man for man in manifold}
+    #manifolds = {}
     #manifolds = {}
 
     # recurrent layer using linearities defined above
@@ -230,6 +236,8 @@ if __name__ == "__main__":
 
     try:
         for epoch in range(NUM_EPOCHS):
+            if (epoch + 1) % 100 == 0:
+                learning_rate.set_value(learning_rate.get_value() * 0.9)
             cost_val = compute_cost(X_val, y_val, mask_val)
             for _ in range(EPOCH_SIZE):
                 X, y, m = gen_data()

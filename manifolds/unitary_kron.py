@@ -5,7 +5,7 @@ from .manifold import Manifold
 
 
 class UnitaryKron(Manifold):
-    def __init__(self, nd):
+    def __init__(self, nd,retr_mode="svd"):
         super(UnitaryKron, self).__init__()
         self._manifolds = tuple(Unitary(n=n) for n in nd)
         self.n = int(np.prod(nd))

@@ -161,7 +161,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     best_test_loss = 1e6
     print('Learning rate is {}'.format(learning_rate.get_value()))
     for i in range(n_iter):
-        if False and model == "URNN":
+        if True and model == "URNN":
             unitary_matrix = [p for p in parameters if p.name == "UNITARY"][0]
             print('How much of unitarity U holds?')
             uval = unitary_matrix.get_value()

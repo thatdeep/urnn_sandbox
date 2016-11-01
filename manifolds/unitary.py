@@ -45,16 +45,15 @@ class Unitary(Manifold):
     Contributors:
     Change log:
     """
-    def __init__(self, n, retr_type='svd'):
+    def __init__(self, n, retr_mode="svd"):
         if n <= 0:
             raise ValueError('n must be at least 1')
-        if retr_type not in ['svd', 'qr']:
-            raise ValueError('retr_type mist be either "svd" or "qr"')
-        self.retr_type = retr_type
+        if retr_mode not in ["svd", "qr", "exp"]:
+            raise ValueError('retr_type mist be "svd", "qr" or "exp", but is "{}"'.format(retr_mode))
+        self.retr_mode = retr_mode
         self._n = n
         # I didn't implement it for k > 1
         self._name = 'Unitary manifold U({}) = St({}, {})'.format(n, n, n)
-        self._exponential = False
 
     @property
     def name(self):
@@ -104,7 +103,7 @@ class Unitary(Manifold):
         X_hconj = tensor.transpose(X, axes=(0, 2, 1))
         #X_hconj = T.zeros((2,) + XR.T.shape)
         #T.set_subtensor(X_hconj[0, :, :], XR.T)
-        tensor.set_subtensor(X_hconj[1, :, :], -1 * X_hconj[1, :, :])
+        X_hconj = tensor.set_subtensor(X_hconj[1, :, :], -1 * X_hconj[1, :, :])
         return X_hconj
 
     def inner(self, X, G, H):
@@ -148,34 +147,35 @@ class Unitary(Manifold):
         rhess = self.proj(X, ehess - HherXHG)
         return rhess
 
-    def retr(self, X, U):
-        YR, YI = self.frac(X + U)
-
-        #Q, R = tensor.nlinalg.qr(YR + 1j * YI)
-        #Y = Q.dot(T.diag(T.sgn(T.sgn(T.diag(R))+.5)))
-        #Y = tensor.stack([Q.real, Q.imag])
-        U, S, V = tensor.nlinalg.svd(YR + 1j * YI, full_matrices=False)
-        Y = U.dot(tensor.eye(S.size)).dot(V)
-        Y = tensor.stack([Y.real, Y.imag])
-        return Y
-
-    def get_back(self, X):
-        XR, XI = self.frac(X)
-        Q, R = tensor.nlinalg.qr(XR + 1j * XI)
-        Y = tensor.stack([Q.real, Q.imag])
+    def retr(self, X, U, mode="default"):
+        if mode == "exp":
+            return self.exp(X, U)
+        elif mode == "qr":
+            YR, YI = self.frac(X + U)
+            Q, R = tensor.nlinalg.qr(YR + 1j * YI)
+            Y = tensor.stack([Q.real, Q.imag])
+        elif mode == "svd":
+            YR, YI = self.frac(X + U)
+            U, S, V = tensor.nlinalg.svd(YR + 1j * YI, full_matrices=False)
+            Y = U.dot(tensor.eye(S.size)).dot(V)
+            Y = tensor.stack([Y.real, Y.imag])
+        elif mode == "default":
+            return self.retr(X, U, mode=self.retr_mode)
+        else:
+            raise ValueError('mode must equal to "svd", "qr", "exp" or "default", but "{}" is given'.format(mode))
         return Y
 
     def concat(self, arrays, axis):
         return tensor.concatenate(arrays, axis=axis+1)
 
-    def exp(self, X, U, t):
+    def exp(self, X, U):
         # The exponential (in the sense of Lie group theory) of a tangent
         # vector U at X.
         first = self.concat([X, U], axis=1)
         XhU = self.complex_dot(self.hconj(X), U)
-        second = complex_expm(t * self.concat([self.concat([XhU, -self.complex_dot(self.hconj(U), U)], 1),
+        second = complex_expm(self.concat([self.concat([XhU, -self.complex_dot(self.hconj(U), U)], 1),
                                   self.concat([self.identity(), XhU], 1)], 0))
-        third = self.concat([t * complex_expm(-XhU), self.zeros()], 0)
+        third = self.concat([complex_expm(-XhU), self.zeros()], 0)
         exponential = self.complex_dot(self.complex_dot(first, second), third)
         return exponential
 
@@ -185,8 +185,7 @@ class Unitary(Manifold):
         raise NotImplementedError
 
     def rand_np(self):
-        Q, unused = la.qr(rnd.normal(size=(self._n, self._n)) +
-                          1j * rnd.normal(size=(self._n, self._n)))
+        Q, unused = la.qr(rnd.normal(size=(self._n, self._n)) + 1j * rnd.normal(size=(self._n, self._n)))
         return np.stack([Q.real, Q.imag])
 
     def zeros(self):
@@ -204,8 +203,9 @@ class Unitary(Manifold):
         return tensor.stack[Q.real, Q.imag]
 
     def randvec(self, X):
-        U = self.proj(X, tensor.stack([rnd.normal(size=(self._n, self._n)),
-                          1j * rnd.normal(size=(self._n, self._n))]))
+        randvec_embedding = tensor.stack([rnd.normal(size=(self._n, self._n)),
+                                          1j * rnd.normal(size=(self._n, self._n))])
+        U = self.proj(X, randvec_embedding)
         U = U / self.norm(X, U)
         return tensor.stack([U.real, U.imag])
 
