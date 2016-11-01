@@ -40,7 +40,6 @@ class FFTOp(gof.Op):
             complex_dtype = np.complex128
         else:
             raise ValueError('array type must be 32/64 int/float, but is {}'.format(a.dtype))
-
         in_data = np.zeros(a.shape[:-1], dtype=complex_dtype)
         in_data.real = a[:, :, 0]
         in_data.imag = a[:, :, 1]

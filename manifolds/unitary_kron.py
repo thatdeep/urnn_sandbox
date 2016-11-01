@@ -7,7 +7,11 @@ from .manifold import Manifold
 class UnitaryKron(Manifold):
     def __init__(self, nd,retr_mode="svd"):
         super(UnitaryKron, self).__init__()
-        self._manifolds = tuple(Unitary(n=n) for n in nd)
+        if retr_mode not in ["svd", "qr", "exp"]:
+            raise ValueError('retr_type mist be "svd", "qr" or "exp", but is "{}"'.format(retr_mode))
+        self.retr_mode = retr_mode
+
+        self._manifolds = tuple(Unitary(n=n, retr_mode=self.retr_mode) for n in nd)
         self.n = int(np.prod(nd))
         self.n_factors = len(nd)
         self._name = "Product of Unitary manifolds of dims {}".format(nd)
@@ -25,7 +29,6 @@ class UnitaryKron(Manifold):
         #hasn't computed
         #self._k * (2 * self._n * self._p - self._p**2)
         raise NotImplementedError
-
 
     @property
     def typicaldist(self):
@@ -74,16 +77,11 @@ class UnitaryKron(Manifold):
         return tuple(manifold.ehess2rhess(x, eg, eh, h) for (manifold, x, eg, eh, h) in \
                      zip(self._manifolds, X, egrad, ehess, H))
 
-    def retr(self, X, U):
-        return tuple(manifold.retr(x, u) for (manifold, x, u) in zip(self._manifolds, X, U))
-
+    def retr(self, X, U, mode="default"):
+        return tuple(manifold.retr(x, u, mode) for (manifold, x, u) in zip(self._manifolds, X, U))
 
     def exp(self, X, U):
         return tuple(manifold.exp(x, u) for (manifold, x, u) in zip(self._manifolds, X, U))
-
-    def get_back(self, X):
-        return tuple(manifold.get_back(x) for (manifold, x) in zip(self._manifolds, X))
-
 
     def log(self, X, Y):
         # The logarithm (in the sense of Lie group theory) of Y. This is the
@@ -92,7 +90,6 @@ class UnitaryKron(Manifold):
 
     def rand_np(self):
         return tuple(manifold.rand_np() for manifold in self._manifolds)
-
 
     def identity_np(self):
         return tuple(manifold.identity_np() for manifold in self._manifolds)
