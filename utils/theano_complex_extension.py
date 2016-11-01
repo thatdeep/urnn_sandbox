@@ -78,7 +78,6 @@ def apply_complex_mat_to_kronecker(x, matrices):
         print(mat)
         result = complex_tensordot(result, mat, axes=([1], [0]))
     return result
-    return tensor.reshape(result, (2, x.shape[1], -1))
 
 
 #------------------------------------------------------------------------------
@@ -91,7 +90,6 @@ def apply_mat_to_kronecker(x, matrices):
     for mat in matrices:
         result = np.tensordot(result, mat, axes=([1], [0]))
     return result
-    return result.reshape((x.shape[0], -1))
 
 
 #------------------------------------------------------------------------------
@@ -103,8 +101,6 @@ def np_apply_complex_mat_to_kronecker(x, matrices):
     for mat in matrices:
         result = np_complex_tensordot(result, mat, axes=([1], [0]))
     return result
-    return np.reshape(result, (2, x.shape[1], -1))
-
 
 
 def np_complex_tensordot(a, b, axes=2):

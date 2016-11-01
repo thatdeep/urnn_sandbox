@@ -25,7 +25,7 @@ N_HIDDEN = 22
 # Number of training sequences in each batch
 N_BATCH = 100
 # Optimization learning rate
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-2
 # All gradients above this will be clipped
 GRAD_CLIP = 100
 # How often should we check the output?

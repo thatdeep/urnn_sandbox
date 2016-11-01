@@ -6,6 +6,9 @@ import theano.tensor as T
 from manifolds import Unitary
 
 
+from utils.theano_complex_extension import frac
+
+
 class UnitaryLayer(lasagne.layers.Layer):
     def __init__(self, incoming, **kwargs):
         super(UnitaryLayer, self).__init__(incoming, **kwargs)
@@ -20,7 +23,7 @@ class UnitaryLayer(lasagne.layers.Layer):
         self.U = self.add_param(U, (2, self.n_hidden, self.n_hidden), name=basename + "U" + self.manifold.str_id, regularizable=False)
 
     def get_output_for(self, input, **kwargs):
-        UR, UI = self.manifold.frac(self.U)
+        UR, UI = frac(self.U)
         if input.ndim > 2:
             # if the input has more than two dimensions, flatten it into a
             # batch of feature vectors.

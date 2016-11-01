@@ -6,8 +6,6 @@ import numpy as np
 from collections import OrderedDict
 
 
-
-
 def clipped_gradients(gradients, gradient_clipping):
     clipped_grads = [T.clip(g, -gradient_clipping, gradient_clipping)
                      for g in gradients]
@@ -39,45 +37,6 @@ def rms_prop(learning_rate, parameters, gradients):
     return updates, rmsprop
 
 
-def modified_sgd(loss_or_grads, params, learning_rate, manifolds=None):
-    manifolds = manifolds if manifolds else {}
-    grads = lasagne.updates.get_or_compute_grads(loss_or_grads, params)
-    updates = OrderedDict()
-
-    if isinstance(manifolds, dict) and manifolds:
-        for manifold_name in manifolds:
-            # group all paramteters that are belongs to manifold
-            man_param_tuple, man_grad_tuple = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
-                                                              if (hasattr(param, 'name') and manifold_name in param.name))))
-            man_param_pair = {manifold_name: man_param_tuple}
-            man_grad_pair = {manifold_name: man_grad_tuple}
-
-            # remove this parameters from params list and add as one tuple
-            if len(man_param_tuple) == len(grads):
-                params, grads = [], []
-            else:
-                params, grads = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
-                                            if (hasattr(param, 'name') and manifold_name not in param.name))))
-            params = [man_param_pair] + list(params)
-            grads = [man_grad_pair] + list(grads)
-
-    for param, grad in zip(params, grads):
-        if param and isinstance(param, dict):
-            # we have manifold parameters
-            manifold_name = list(param.keys())[0]
-            manifold = manifolds[manifold_name]
-
-            pp = param[manifold_name]
-            gg = grad[manifold_name]
-            if len(pp) == 1:
-                pp, gg = pp[0], gg[0]
-                param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
-            updates[pp] = param_updates
-        else:
-            updates[param] = param - learning_rate * grad
-    return updates
-
-
 def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
     """Stochastic Gradient Descent (SGD) updates
 
@@ -93,163 +52,69 @@ def custom_sgd(loss_or_grads, params, learning_rate, manifolds=None):
         The variables to generate update expressions for
     learning_rate : float or symbolic scalar
         The learning rate controlling the size of update steps
+    manifolds : dict
+        Dictionary that contains manifolds for manifold parameters
 
     Returns
     -------
     OrderedDict
         A dictionary mapping each parameter to its update expression
     """
+    def filter_func(manifold_name, inverse=False):
+        def inner_filter_func(param_grad_tuple):
+            filter_result = (hasattr(param_grad_tuple[0], 'name') and manifold_name in param_grad_tuple[0].name)
+            return not filter_result if inverse else filter_result
+        return inner_filter_func
+
     manifolds = manifolds if manifolds else {}
     grads = lasagne.updates.get_or_compute_grads(loss_or_grads, params)
     updates = OrderedDict()
 
-    manifold_param_stack = []
-    manifold_grad_stack = []
+    manifolds_params_stack = []
+    manifolds_grads_stack = []
+
 
     if isinstance(manifolds, dict) and manifolds:
-
         for manifold_name in manifolds:
-            manifold_tuple, manifold_grads_tuple = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)\
-                                                                   if (hasattr(param, 'name') and manifold_name in param.name))))
-            manifold_tuple = {manifold_name: manifold_tuple}
-            manifold_grads_tuple = {manifold_name: manifold_grads_tuple}
+            # filter parameters and gradients for specific manifold
+            man_params_tuple, man_grads_tuple = zip(*filter(filter_func(manifold_name), zip(params, grads)))
 
-            if len(manifold_tuple[manifold_name]) == len(grads):
+            man_params_tuple = {manifold_name: tuple(man_params_tuple)}
+            man_grads_tuple = {manifold_name: tuple(man_grads_tuple)}
+
+            if len(man_params_tuple[manifold_name]) == len(params):
                 params, grads = [], []
             else:
-                params, grads = list(zip(*tuple((param, grad) for (param, grad) in zip(params, grads)
-                                            if (hasattr(param, 'name') and manifold_name not in param.name))))
-            manifold_param_stack.append(manifold_tuple)
-            manifold_grad_stack.append(manifold_grads_tuple)
+                params, grads = zip(*filter(filter_func(manifold_name, inverse=True), zip(params, grads)))
+            manifolds_params_stack.append(man_params_tuple)
+            manifolds_grads_stack.append(man_grads_tuple)
             params = list(params)
             grads = list(grads)
 
-    params = manifold_param_stack + params
-    grads = manifold_grad_stack + grads
+    params = manifolds_params_stack + params
+    grads = manifolds_grads_stack + grads
 
     for param, grad in zip(params, grads):
-        if param and isinstance(param, dict) and len(param) == 1 and isinstance(list(param.values())[0], tuple):# and "fixed_rank" in param[0].name:
+        if isinstance(param, dict):
             manifold_name = list(param.keys())[0]
             manifold = manifolds[manifold_name]
             if hasattr(manifold, "from_partial"):
-                if hasattr(manifold, '_exponential') and manifold._exponential:
-                    param_updates = manifold.exp(param[manifold_name],
-                                              manifold.from_partial(param[manifold_name], grad[manifold_name]),
-                                              -learning_rate)
-                else:
-                    param_updates = manifold.retr(param[manifold_name],
-                                              manifold.from_partial(param[manifold_name], grad[manifold_name]),
-                                              -learning_rate)
+                grad_from_partial = manifold.from_partial(param[manifold_name], grad[manifold_name])
+                grad_step = manifold.lincomb(param[manifold_name], grad_from_partial, -learning_rate)
+                param_updates = manifold.retr(param[manifold_name], grad_step)
                 for p, upd in zip(param[manifold_name], param_updates):
                     updates[p] = upd
             else:
-                pp = param[manifold_name]
-                gg = grad[manifold_name]
-                if len(pp) == 1:
-                    pp, gg = pp[0], gg[0]
-                if hasattr(manifold, '_exponential') and manifold._exponential:
-                    param_updates = manifold.exp(pp, manifold.proj(pp, gg), -learning_rate)
-                    #param_updates = manifold.exp(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
-                else:
-                    param_updates = manifold.retr(pp, manifold.lincomb(pp, -learning_rate, manifold.proj(pp, gg)))
-                updates[pp] = param_updates
+                param_tuple = param[manifold_name]
+                grad_tuple = grad[manifold_name]
+                if len(param_tuple) == 1:
+                    param_tuple, grad_tuple = param_tuple[0], grad_tuple[0]
+                grad_step = manifold.lincomb(param_tuple, manifold.proj(param_tuple, grad_tuple), -learning_rate)
+                param_updates = manifold.retr(param_tuple, grad_step)
+                updates[param_tuple] = param_updates
         else:
             updates[param] = param - learning_rate * grad
-
     return updates
-
-'''
-def adam(loss_or_grads, params, learning_rate=0.001, beta1=0.9,
-         beta2=0.999, epsilon=1e-8, manifolds=None):
-    """Adam updates
-    Adam updates implemented as in [1]_.
-    Parameters
-    ----------
-    loss_or_grads : symbolic expression or list of expressions
-        A scalar loss expression, or a list of gradient expressions
-    params : list of shared variables
-        The variables to generate update expressions for
-    learning_rate : float
-        Learning rate
-    beta1 : float
-        Exponential decay rate for the first moment estimates.
-    beta2 : float
-        Exponential decay rate for the second moment estimates.
-    epsilon : float
-        Constant for numerical stability.
-    Returns
-    -------
-    OrderedDict
-        A dictionary mapping each parameter to its update expression
-    Notes
-    -----
-    The paper [1]_ includes an additional hyperparameter lambda. This is only
-    needed to prove convergence of the algorithm and has no practical use
-    (personal communication with the authors), it is therefore omitted here.
-    References
-    ----------
-    .. [1] Kingma, Diederik, and Jimmy Ba (2014):
-           Adam: A Method for Stochastic Optimization.
-           arXiv preprint arXiv:1412.6980.
-    """
-    all_grads = lasagne.updates.get_or_compute_grads(loss_or_grads, params)
-    t_prev = theano.shared(lasagne.utils.floatX(0.))
-    manifolds = manifolds if manifolds else {}
-    updates = OrderedDict()
-
-    if isinstance(manifolds, dict) and manifolds:
-
-        for manifold_name in manifolds:
-            manifold_tuple, manifold_grads_tuple = list(zip(*tuple((param, grad) for (param, grad) in zip(params, all_grads)\
-                                                                   if (hasattr(param, 'name') and manifold_name in param.name))))
-            manifold_tuple = {manifold_name: manifold_tuple}
-            manifold_grads_tuple = {manifold_name: manifold_grads_tuple}
-
-            params, grads = list(zip(*tuple((param, grad) for (param, grad) in zip(params, all_grads)
-                                            if (hasattr(param, 'name') and manifold_name not in param.name))))
-            params = [manifold_tuple] + list(params)
-            grads = [manifold_grads_tuple] + list(grads)
-
-    t = t_prev + 1
-    a_t = learning_rate*T.sqrt(1-beta2**t)/(1-beta1**t)
-
-    for param, g_t in zip(params, all_grads):
-        if param and isinstance(param, dict) and len(param) == 1 and isinstance(list(param.values())[0], tuple):# and "fixed_rank" in param[0].name:
-            manifold_name = list(param.keys())[0]
-            manifold = manifolds[manifold_name]
-            #param_updates = manifold.retr(param[manifold_name], grad[manifold_name], -learning_rate)
-            #for p, upd in zip(param[manifold_name], param_updates):
-            #    updates[p] = upd
-
-            values = (p.get_value(borrow=True) for p in param)
-            m_prev = (theano.shared(np.zeros(value.shape, dtype=value.dtype), broadcastable=p.broadcastable)
-                      for (value, p) in zip(values, param))
-            v_prev = (theano.shared(np.zeros(value.shape, dtype=value.dtype), broadcastable=p.broadcastable)
-                      for (value, p) in zip(values, param))
-
-            m_t = manifold.lincomb(param, beta1, m_prev, (1 - beta1), g_t)
-            #v_t = manifold.lincomb(param, beta2, m_prev, (1 - beta2), manifold.proj((g_ta[0].dot(g_ta[1]).dot(g_ta[2]))**2))
-            v_t = manifold.lincomb(param, beta2, m_prev, (1 - beta2), manifold.proj((g_t[0]**2, g_t[1]**2, g_t[2]**2), type='tan_vec'))
-            step =
-
-        else:
-            value = param.get_value(borrow=True)
-            m_prev = theano.shared(np.zeros(value.shape, dtype=value.dtype),
-                                   broadcastable=param.broadcastable)
-            v_prev = theano.shared(np.zeros(value.shape, dtype=value.dtype),
-                                   broadcastable=param.broadcastable)
-
-            m_t = beta1*m_prev + (1-beta1)*g_t
-            v_t = beta2*v_prev + (1-beta2)*g_t**2
-            step = a_t*m_t/(T.sqrt(v_t) + epsilon)
-
-            updates[m_prev] = m_t
-            updates[v_prev] = v_t
-            updates[param] = param - step
-
-    updates[t_prev] = t
-    return updates
-'''
 
 
 def sgd(loss_or_grads, params, learning_rate):

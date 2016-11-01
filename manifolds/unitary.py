@@ -119,16 +119,17 @@ class Unitary(Manifold):
             YR, YI = frac(X + U)
             Q, R = tensor.nlinalg.qr(YR + 1j * YI)
             Y = tensor.stack([Q.real, Q.imag])
+            return Y
         elif mode == "svd":
             YR, YI = frac(X + U)
             U, S, V = tensor.nlinalg.svd(YR + 1j * YI, full_matrices=False)
             Y = U.dot(tensor.eye(S.size)).dot(V)
             Y = tensor.stack([Y.real, Y.imag])
+            return Y
         elif mode == "default":
             return self.retr(X, U, mode=self.retr_mode)
         else:
             raise ValueError('mode must equal to "svd", "qr", "exp" or "default", but "{}" is given'.format(mode))
-        return Y
 
     def concat(self, arrays, axis):
         return tensor.concatenate(arrays, axis=axis+1)
