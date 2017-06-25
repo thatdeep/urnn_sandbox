@@ -21,11 +21,11 @@ np.set_printoptions(linewidth=200, suppress=True)
 MIN_LENGTH = 50
 MAX_LENGTH = 51
 # Number of units in the hidden (recurrent) layer
-N_HIDDEN = 22
+N_HIDDEN = 81
 # Number of training sequences in each batch
 N_BATCH = 100
 # Optimization learning rate
-LEARNING_RATE = 1e-2
+LEARNING_RATE = 3 * 1e-3
 # All gradients above this will be clipped
 GRAD_CLIP = 100
 # How often should we check the output?
@@ -143,14 +143,15 @@ class ModRelu(lasagne.layers.Layer):
         self.hb = self.add_param(b, (self.n_hidden,), name='hb', regularizable=False, trainable=True)
 
     def get_output_for(self, input, **kwargs):
-        eps = 1e-8
+        eps = 1e-5
         print("Inside a ModReLU")
         input_flattened = input.reshape((-1, self.n_hidden*2))
 
         swap_re_im = np.concatenate((np.arange(self.n_hidden, 2*self.n_hidden), np.arange(self.n_hidden)))
         #modulus=T.stack([input_flattened, input_flattened[:, swap_re_im]], axis=0).norm(L=2, axis=0)
         modulus = T.sqrt(input_flattened**2 + input_flattened[:, swap_re_im]**2 + eps)
-        rescale = rectify(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0)) / (T.max(modulus, 1e-5))
+        rescale = T.maximum(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0), 0.) / (modulus + 1e-5)
+        #rescale = rectify(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0)) / (T.max(modulus, 1e-5))
         #rescale = T.maximum(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0), 0.) / (modulus + 1e-5)
         out = (input_flattened * rescale).reshape(input.shape)
         return out
@@ -173,16 +174,19 @@ if __name__ == "__main__":
 
     # define input-to-hidden and hidden-to-hidden linear transformations
     l_in_hid = lasagne.layers.DenseLayer(lasagne.layers.InputLayer((None, N_INPUT)), N_HIDDEN * 2)
-    #l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
-    l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+    l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+    #l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+    manifolds = {}
 
-    #l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [4]*4, [2]*3)
+    """
+    l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [3]*4, [2]*3)
 
     manifold = l_hid_hid.manifold
     if not isinstance(manifold, list):
         manifold = [manifold]
     manifolds = {man.str_id: man for man in manifold}
-    #manifolds = {}
+    """
+
     #manifolds = {}
 
     # recurrent layer using linearities defined above

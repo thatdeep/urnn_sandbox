@@ -111,7 +111,7 @@ def _wtt_image(x, cores, n, ranks, rec_dep=0):
     return yk
 
 
-
+"""
 def comp_wtt_image(x, cores, n, ranks, rec_dep=0, verbose=False):
     rd = '\t'*rec_dep
     if verbose:
@@ -165,6 +165,52 @@ def comp_wtt_image(x, cores, n, ranks, rec_dep=0, verbose=False):
     if verbose:
         print('{}finally reshape yk to ravel: yk.shape = {}'.format(rd, yk.shape))
     return yk
+"""
+
+
+def comp_wtt_image(x, cores, n, ranks, rec_dep=0, verbose=False):
+    # expected shape of x: (2 (complex), num_samples, rkm1 * nk * ... * nd)
+    rd = '\t'*rec_dep
+    if verbose:
+        print('{}Insided rec step {}:'.format(rd, rec_dep))
+        print('{}x shape is {}'.format(rd, x.shape))
+    xk = x
+    r0 = 1
+
+    k = rec_dep
+    rkm1 = r0 if k == 0 else ranks[k-1]
+    nk = n[k]
+    num_samples = x.shape[1]
+
+    if k == len(n) - 1:
+        print('lol: {}'.format(x.shape))
+        x = tensor.transpose(x, (0, 2, 1))
+        res = complex_dot(hconj(cores[-1]), x)
+        res = tensor.transpose(res, (0, 2, 1))
+        return res
+
+    rk = ranks[k]
+
+    xk = tensor.reshape(x, (2, num_samples, rkm1 * nk, -1))
+    xk = tensor.transpose(xk, (0, 2, 1, 3)).reshape((2, rkm1 * nk, -1))
+    xk = complex_dot(hconj(cores[k]), xk)
+    xk = tensor.reshape(xk, (2, rkm1 * nk, num_samples, -1))
+
+    xk1 = xk[:, :rk, :, :]
+    zk1 = xk[:, rk:rkm1 * nk, :, :]
+
+    xk1 = tensor.transpose(xk1, (0, 2, 1, 3))
+    xk1 = tensor.reshape(xk1, (2, num_samples, -1))
+
+    yk1 = comp_wtt_image(xk1, cores, n, ranks, rec_dep=rec_dep + 1, verbose=verbose)
+    yk1 = tensor.reshape(yk1, (2, num_samples, rk, -1))
+    yk1 = tensor.transpose(yk1, (0, 2, 1, 3))
+
+    yk = tensor.concatenate([yk1, zk1], axis=1)
+    yk = tensor.transpose(yk, (0, 2, 1, 3))
+    yk = tensor.reshape(yk, (2, num_samples, -1))
+
+    return yk
 
 
 class WTTLayer(lasagne.layers.Layer):
@@ -202,8 +248,8 @@ class WTTLayer(lasagne.layers.Layer):
         unitary_input = tensor.reshape(input, (input.shape[0], 2, self.num_inputs))
         IR, II = unitary_input[:, 0, :], unitary_input[:, 1, :]
         I = tensor.stack([IR, II], axis=0)
-        output = _wtt_image(tensor.stack([IR, II], axis=0), cores, self.nd, self.ranks)
-        output = tensor.stack(_frac(output), axis=1)
+        output = comp_wtt_image(I, cores, self.nd, self.ranks)
+        output = tensor.stack([output[0, ...], output[1, ...]], axis=1)
         output = output.reshape((input.shape[0], -1))
         return output
 

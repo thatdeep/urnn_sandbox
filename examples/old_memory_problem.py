@@ -2,21 +2,12 @@ import pickle
 import gzip
 import theano
 import pdb
-from utils.fftconv import cufft, cuifft
 import numpy as np
 import theano.tensor as T
 from theano.ifelse import ifelse
 from layers.models import *
 from utils.optimizations import *
 import argparse, timeit
-#allow bigger graphs (Python's default setting of 1000 for modern computers [https://github.com/Theano/Theano/issues/689]):
-import sys 
-sys.setrecursionlimit(50000)
-
-
-theano.config.exception_verbosity='high'
-theano.config.mode='DebugMode'
-theano.config.optimizer='None'
 
 
 def generate_data(time_steps, n_data, n_sequence):
@@ -26,13 +17,13 @@ def generate_data(time_steps, n_data, n_sequence):
     marker = 9 * np.ones((n_data, 1))
     zeros3 = np.zeros((n_data, n_sequence))
 
-    x = np.concatenate((seq, zeros1, marker, zeros3), axis=1).astype('int32')
-    y = np.concatenate((zeros3, zeros2, seq), axis=1).astype('int32')
+    x = np.concatenate((seq, zeros1, marker, zeros3), axis=1).astype('int64')
+    y = np.concatenate((zeros3, zeros2, seq), axis=1).astype('int64')
     
     return x.T, y.T
 
     
-def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, input_type, out_every_t, loss_function, w_impl='urnn',n_reflections=None,flag_telescope=True,flag_useGivensForLoop=False):
+def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, input_type, out_every_t, loss_function):
 
     # --- Set data params ----------------
     n_input = 10
@@ -47,8 +38,6 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     train_x, train_y = generate_data(time_steps, n_train, n_sequence)
     test_x, test_y = generate_data(time_steps, n_test, n_sequence)
 
-    # train_x is size 120 x n_train, train_y is size 120 x n_train
-
     s_train_x = theano.shared(train_x)
     s_train_y = theano.shared(train_y)
 
@@ -58,8 +47,6 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
     
     # --- Create theano graph and compute gradients ----------------------
 
-    print('Creating theano graph for model %s' % model)
- 
     gradient_clipping = np.float32(1)
 
     if (model == 'LSTM'):           
@@ -69,29 +56,8 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         gradients = [T.clip(g, -gradient_clipping, gradient_clipping) for g in gradients]
 
     elif (model == 'complex_RNN'):
-        if (w_impl == 'full'):
-            inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,out_every_t=out_every_t, loss_function=loss_function,output_type='real', fidx=None, flag_return_lin_output=False,name_suffix='',x_spec=None,flag_feed_forward=False,flag_use_mask=False,hidden_bias_mean=0.0,lam=0.0,Wimpl='full')
-
-        else:
-            inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
+        inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
-        #inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
-        #                                        out_every_t=out_every_t, loss_function=loss_function)
-        gradients = T.grad(costs[0], parameters)
-
-    elif (model == 'cue_RNN'):
-            #print "Using CUE-RNN with %d telescoping Householder reflections of dim. %d" % (n_reflections,n_hidden)
-        if flag_telescope:
-            print("Using CUE-RNN with %d telescoping Householder reflections of dim. %d" % (n_reflections,n_hidden))
-        else:
-            print("Using CUE-RNN with %d full Householder reflections of dim. %d" % (n_reflections,n_hidden))
-        inputs, parameters, costs = cue_RNN(n_input, n_hidden, n_output, input_type=input_type,
-                                                out_every_t=out_every_t, loss_function=loss_function, n_reflections=n_reflections, flag_telescope=True)
-        gradients = T.grad(costs[0], parameters)
-
-    elif (model == 'Givens_RNN'):
-        inputs, parameters, costs = Givens_RNN(n_input, n_hidden, n_output, input_type=input_type,
-                                               out_every_t=out_every_t, loss_function=loss_function,flag_useGivensForLoop=flag_useGivensForLoop)
         gradients = T.grad(costs[0], parameters)
 
     elif (model == 'IRNN'):
@@ -113,15 +79,8 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
  
     # --- Compile theano functions --------------------------------------------------
 
-    print('Compiling theano functions...')
-
     index = T.iscalar('i')
 
-    if (w_impl == 'full'):
-        idx_project=[5]
-    else:
-        idx_project=None
-    #updates, rmsprop = rms_prop(learning_rate, parameters, gradients,idx_project)
     updates, rmsprop = rms_prop(learning_rate, parameters, gradients)
 
     givens = {inputs[0] : s_train_x[:, n_batch * index : n_batch * (index + 1)],
@@ -131,12 +90,11 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
                    inputs[1] : s_test_y}
     
    
+    
     train = theano.function([index], costs[0], givens=givens, updates=updates)
     test = theano.function([], [costs[0], costs[1]], givens=givens_test)
 
     # --- Training Loop ---------------------------------------------------------------
-
-    print('Starting training loop...')
 
     train_loss = []
     test_loss = []
@@ -189,6 +147,7 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
 
             
 if __name__=="__main__":
+    theano.config.exception_verbosity = 'high'
     parser = argparse.ArgumentParser(
         description="training a model")
     parser.add_argument("n_iter", type=int, default=20000)
@@ -196,15 +155,11 @@ if __name__=="__main__":
     parser.add_argument("n_hidden", type=int, default=512)
     parser.add_argument("time_steps", type=int, default=200)
     parser.add_argument("learning_rate", type=float, default=0.001)
-    parser.add_argument("savefile")
+    parser.add_argument("savefile", type=str, default="testfile")
     parser.add_argument("model", default='complex_RNN')
     parser.add_argument("input_type", default='categorical')
     parser.add_argument("out_every_t", default='False')
     parser.add_argument("loss_function", default='MSE')
-    parser.add_argument("--n_reflections", default=8, help="number of reflections for CUE-RNN")
-    parser.add_argument("--flag_telescope", default=True, help="whether to use telescoping reflections (True) or full reflections (False)")
-    parser.add_argument("--flag_useGivensForLoop",default=False, help="if True, use a for loop instead of scan to do Givens rotations")
-    parser.add_argument("w_impl", default='urnn')
 
     args = parser.parse_args()
     dict = vars(args)
@@ -218,10 +173,6 @@ if __name__=="__main__":
               'model': dict['model'],
               'input_type': dict['input_type'],
               'out_every_t': 'True'==dict['out_every_t'],
-              'loss_function': dict['loss_function'],
-              'n_reflections': int(args.n_reflections),
-              'flag_telescope': bool(args.flag_telescope),
-              'flag_useGivensForLoop': bool(args.flag_useGivensForLoop),
-              'w_impl': dict['w_impl']}
+              'loss_function': dict['loss_function']}
 
     main(**kwargs)
