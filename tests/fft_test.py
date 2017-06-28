@@ -62,23 +62,3 @@ if __name__ == "__main__":
     #print(target_grad_num)
     print('-'*80)
     print(np.allclose(simple_data_back, target_grad_num))
-
-"""
-    fftx = fft(X, n)
-    fftx3 = ifft(X, n)
-
-    gf = theano.grad(T.sum(fftx), [X])
-    gff = theano.function([X], gf)
-
-    f3 = theano.function([X], fftx3)
-
-    data = rnd.normal(size=(m, n, 2))
-
-    print(data)
-    print('-'*80)
-    gff(data)
-    print(gff(data))
-    print('-'*80)
-    f3(data)
-    print(f3(data))
-"""

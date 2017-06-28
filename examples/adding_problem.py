@@ -68,12 +68,12 @@ def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, 
         gradients = [T.clip(g, -gradient_clipping, gradient_clipping) for g in gradients]
 
     elif (model == 'complex_RNN_momentum'):
-        inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
+        inputs, parameters, costs = complexRNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
         gradients = T.grad(costs[0], parameters)
 
     elif (model == 'complex_RNN'):
-        inputs, parameters, costs = complex_RNN(n_input, n_hidden, n_output, input_type=input_type,
+        inputs, parameters, costs = complexRNN(n_input, n_hidden, n_output, input_type=input_type,
                                                 out_every_t=out_every_t, loss_function=loss_function)
         gradients = T.grad(costs[0], parameters)
 
