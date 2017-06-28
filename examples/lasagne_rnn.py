@@ -5,7 +5,7 @@ import numpy as np
 import theano.tensor as T
 from numpy import random as rnd, linalg as la
 
-from layers import UnitaryLayer, UnitaryKronLayer, RecurrentUnitaryLayer, ComplexLayer, WTTLayer
+from layers import UnitaryLayer, UnitaryKronLayer, RecurrentUnitaryLayer, ComplexLayer, WTTLayer, Modrelu
 from matplotlib import pyplot as plt
 from utils.optimizations import nesterov_momentum, custom_sgd
 from lasagne.nonlinearities import rectify
@@ -103,67 +103,11 @@ def gen_data(min_length=MIN_LENGTH, max_length=MAX_LENGTH, n_batch=N_BATCH):
     return (X.astype(theano.config.floatX), y.astype(theano.config.floatX),
             mask.astype('int32'))
 
-def generate_data(time_steps, n_data):
-    x = np.asarray(np.zeros((time_steps, int(n_data), 2)),
-                   dtype=theano.config.floatX)
-
-    x[:,:,0] = np.asarray(np.random.uniform(low=0.,
-                                            high=1.,
-                                            size=(time_steps, n_data)),
-                          dtype=theano.config.floatX)
-
-    inds = np.asarray(np.random.randint(time_steps//2, size=(n_data, 2)))
-    inds[:, 1] += time_steps//2
-
-    for i in range(int(n_data)):
-        x[inds[i, 0], i, 1] = 1.0
-        x[inds[i, 1], i, 1] = 1.0
-
-    y = (x[:,:,0] * x[:,:,1]).sum(axis=0)
-    y = np.reshape(y, (n_data, 1))
-
-    return x, y
-
-
-class Tanh(lasagne.layers.Layer):
-    def get_output_for(self, input, **kwargs):
-        return lasagne.nonlinearities.tanh(input)
-
-
-class Rectify(lasagne.layers.Layer):
-    def get_output_for(self, input, **kwargs):
-        return lasagne.nonlinearities.rectify(input)
-
-
-class ModRelu(lasagne.layers.Layer):
-    def __init__(self, incoming, b=lasagne.init.Uniform(range=0.01), **kwargs):
-        super(ModRelu, self).__init__(incoming, **kwargs)
-        print(self.input_shape)
-        self.n_hidden = self.input_shape[-1] // 2
-        self.hb = self.add_param(b, (self.n_hidden,), name='hb', regularizable=False, trainable=True)
-
-    def get_output_for(self, input, **kwargs):
-        eps = 1e-5
-        print("Inside a ModReLU")
-        input_flattened = input.reshape((-1, self.n_hidden*2))
-
-        swap_re_im = np.concatenate((np.arange(self.n_hidden, 2*self.n_hidden), np.arange(self.n_hidden)))
-        #modulus=T.stack([input_flattened, input_flattened[:, swap_re_im]], axis=0).norm(L=2, axis=0)
-        modulus = T.sqrt(input_flattened**2 + input_flattened[:, swap_re_im]**2 + eps)
-        rescale = T.maximum(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0), 0.) / (modulus + 1e-5)
-        #rescale = rectify(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0)) / (T.max(modulus, 1e-5))
-        #rescale = T.maximum(modulus + T.tile(self.hb, [2]).dimshuffle('x', 0), 0.) / (modulus + 1e-5)
-        out = (input_flattened * rescale).reshape(input.shape)
-        return out
-
-
-
 
 if __name__ == "__main__":
     print("Building network ...")
     N_INPUT=2
     learning_rate = theano.shared(np.array(LEARNING_RATE, dtype=theano.config.floatX))
-
 
 
     # input layer of shape (n_batch, n_timestems, n_input)
@@ -174,23 +118,23 @@ if __name__ == "__main__":
 
     # define input-to-hidden and hidden-to-hidden linear transformations
     l_in_hid = lasagne.layers.DenseLayer(lasagne.layers.InputLayer((None, N_INPUT)), N_HIDDEN * 2)
-    l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+    #l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
     #l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
-    manifolds = {}
+    #manifolds = {}
 
-    """
+
     l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [3]*4, [2]*3)
 
     manifold = l_hid_hid.manifold
     if not isinstance(manifold, list):
         manifold = [manifold]
     manifolds = {man.str_id: man for man in manifold}
-    """
+
 
     #manifolds = {}
 
     # recurrent layer using linearities defined above
-    l_rec = RecurrentUnitaryLayer(l_in, l_in_hid, l_hid_hid, nonlinearity=Tanh(lasagne.layers.InputLayer((None, N_HIDDEN * 2))),
+    l_rec = RecurrentUnitaryLayer(l_in, l_in_hid, l_hid_hid, nonlinearity=ModRelu(lasagne.layers.InputLayer((None, N_HIDDEN * 2))),
                                                 mask_input=l_mask, only_return_final=True)
     print(lasagne.layers.get_output_shape(l_rec))
 

@@ -6,7 +6,7 @@ from utils.fftconv import cufft, cuifft
 import numpy as np
 import theano.tensor as T
 from theano.ifelse import ifelse
-from layers.models import *
+from models import *
 from utils.optimizations import *
 import argparse, timeit
 #allow bigger graphs (Python's default setting of 1000 for modern computers [https://github.com/Theano/Theano/issues/689]):

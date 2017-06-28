@@ -4,7 +4,7 @@ import theano
 import numpy as np
 import theano.tensor as T
 from theano.ifelse import ifelse
-from layers.models import *
+from models import *
 from utils.optimizations import *
 from numpy import linalg as la
 import argparse

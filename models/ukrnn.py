@@ -1,17 +1,18 @@
 import theano
 import numpy as np
 
-from manifolds import Unitary
+from manifolds import UnitaryKron
 from theano import tensor as T
 
 
-from .utils import initialize_matrix, initialize_data_nodes, compute_cost_t, unitary_transform
+from .utils import initialize_matrix, initialize_data_nodes, compute_cost_t, unitary_kron_transform
 
 NP_FLOAT = np.float64
 INT_STR = 'int64'
 FLOAT_STR = 'float64'
 
-def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss_function='CE'):
+
+def UKRNN(n_input, n_hidden, partition, n_output, input_type='real', out_every_t=False, loss_function='CE'):
 
     np.random.seed(1234)
     rng = np.random.RandomState(1234)
@@ -24,11 +25,11 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
                                                        size=(n_hidden,)),
                                            dtype=theano.config.floatX),
                                 name='hidden_bias')
+    kron_manifold = UnitaryKron(partition)
 
-    MANIFOLD_NAME = "UNITARY"
-    unitary_manifold = Unitary(n=n_hidden)
-    unitary_matrix = theano.shared(value=unitary_manifold.rand_np(), name=MANIFOLD_NAME)
-    manifolds = {MANIFOLD_NAME: unitary_manifold}
+    MANIFOLD_NAMES = [manifold.str_id for manifold in kron_manifold._manifolds]
+    UK = [theano.shared(value=manifold.rand_np(), name=manifold.str_id) for manifold in kron_manifold._manifolds]
+    manifolds = {manifold.str_id: manifold for manifold in kron_manifold._manifolds}
 
 
     out_bias = theano.shared(np.zeros((n_output,), dtype=theano.config.floatX), name='out_bias')
@@ -40,7 +41,7 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
                                    dtype=theano.config.floatX),
                         name='h_0')
 
-    parameters = [V, U, hidden_bias, unitary_matrix, out_bias, h_0]
+    parameters = [V, U, hidden_bias] + UK + [out_bias, h_0]
 
     x, y = initialize_data_nodes(loss_function, input_type, out_every_t)
 
@@ -48,8 +49,9 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
     swap_re_im = np.concatenate((np.arange(n_hidden, 2*n_hidden), np.arange(n_hidden)))
 
     # define the recurrence used by theano.scan
-    def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, unitary_matrix, V, hidden_bias, out_bias, U):
-        unitary_step = unitary_transform(h_prev, n_hidden, unitary_matrix)
+    def recurrence(x_t, y_t, h_prev, cost_prev, acc_prev, V, hidden_bias, out_bias, U, *UK):
+        #unitary_step = unitary_transform(h_prev, n_hidden, unitary_matrix)
+        unitary_step = unitary_kron_transform(h_prev, n_hidden, UK)
 
         hidden_lin_output = unitary_step
 
@@ -81,7 +83,7 @@ def URNN(n_input, n_hidden, n_output, input_type='real', out_every_t=False, loss
 
     # compute hidden states
     h_0_batch = T.tile(h_0, [x.shape[1], 1])
-    non_sequences = [unitary_matrix, V, hidden_bias, out_bias, U]
+    non_sequences = [V, hidden_bias, out_bias, U] + UK
     if out_every_t:
         sequences = [x, y]
     else:
