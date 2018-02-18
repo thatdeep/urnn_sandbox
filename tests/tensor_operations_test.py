@@ -5,14 +5,18 @@ import numpy as np
 from theano import tensor
 from numpy import random as rnd
 
-
+from theano.gradient import verify_grad
+from utils.complex_expm import complex_expm
+from utils.complex_matrix_inverse import complex_matrix_inverse
 from utils.theano_complex_extension import complex_reshape, complex_tensordot, apply_mat_to_kronecker
 from utils.theano_complex_extension import apply_complex_mat_to_kronecker, np_complex_tensordot
 from utils.theano_complex_extension import np_apply_complex_mat_to_kronecker
 
 
+
 class TensorDotFunction(unittest.TestCase):
     def test_complex_reshape(self):
+        print("cheburek")
         def get_all_prod_pairs(n):
             return [(i, n // i) for i in range(1, n+1) if n % i == 0]
 
@@ -100,6 +104,21 @@ class TensorDotFunction(unittest.TestCase):
         self.assertTrue(np.allclose(computed[0, ...] + 1j * computed[1, ...], ethalon))
         self.assertTrue(np.allclose(computed_with_np[0, ...] + 1j * computed_with_np[1, ...], ethalon))
 
+
+class TensorComplexExpm(unittest.TestCase):
+    def test_complex_expm(self):
+        print("kek")
+        x_shape = (2, 10, 10)
+        x = rnd.normal(size=x_shape)
+        verify_grad(complex_expm, (x,), rng=rnd)
+
+
+class TensorComplexMatInv(unittest.TestCase):
+    def test_complex_matrix_inverse(self):
+        print("shpek")
+        x_shape = (2, 10, 10)
+        x = rnd.normal(size=x_shape)
+        verify_grad(complex_matrix_inverse, (x,), rng=rnd)
 
 if __name__ == '__main__':
     unittest.main()

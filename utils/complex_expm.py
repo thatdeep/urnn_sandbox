@@ -5,6 +5,7 @@ from theano import Op, Apply
 
 from theano.tensor import as_tensor_variable
 
+
 try:
     import scipy.linalg
     imported_scipy = True

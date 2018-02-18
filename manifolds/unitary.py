@@ -7,9 +7,12 @@ from theano import tensor
 
 from manifolds.manifold import Manifold
 from utils.complex_expm import complex_expm
+from utils.complex_matrix_inverse import complex_matrix_inverse
+from utils.theano_complex_extension import frac, identity, zeros, complex_dot, hconj
+
 from theano.tensor.shared_randomstreams import RandomStreams
 
-from utils.theano_complex_extension import frac, identity, zeros, complex_dot, hconj
+
 
 
 srnd = RandomStreams(rnd.randint(0, 1000))
@@ -47,11 +50,11 @@ class Unitary(Manifold):
     Contributors:
     Change log:
     """
-    def __init__(self, n, retr_mode="svd"):
+    def __init__(self, n, retr_mode="cayley"):
         if n <= 0:
             raise ValueError('n must be at least 1')
-        if retr_mode not in ["svd", "qr", "exp"]:
-            raise ValueError('retr_type mist be "svd", "qr" or "exp", but is "{}"'.format(retr_mode))
+        if retr_mode not in ["svd", "qr", "exp", "cayley"]:
+            raise ValueError('retr_type mist be "svd", "qr", "cayley" or "exp", but is "{}"'.format(retr_mode))
         self.retr_mode = retr_mode
         self._n = n
         # I didn't implement it for k > 1
@@ -126,6 +129,10 @@ class Unitary(Manifold):
             Y = U.dot(tensor.eye(S.size)).dot(V)
             Y = tensor.stack([Y.real, Y.imag])
             return Y
+        elif mode == "cayley":
+            A = complex_dot(hconj(U), X) + complex_dot(hconj(X), U)
+            return complex_dot(complex_matrix_inverse(identity(self._n) + 0.5 * A),
+                               (identity(self._n) - 0.5 * A))
         elif mode == "default":
             return self.retr(X, U, mode=self.retr_mode)
         else:

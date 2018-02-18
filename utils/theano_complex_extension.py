@@ -23,7 +23,7 @@ def zeros(shape):
 
 
 def identity(n):
-    return tensor.eye(n)
+    return tensor.stack([tensor.eye(n), tensor.zeros((n, n))], axis=0)
 
 
 def complex_dot(A, B):
@@ -33,6 +33,18 @@ def complex_dot(A, B):
     prod = tensor.set_subtensor(prod[0, :, :], A_real.dot(B_real) - A_imag.dot(B_imag))
     prod = tensor.set_subtensor(prod[1, :, :], A_real.dot(B_imag) + A_imag.dot(B_real))
     return prod
+
+
+def complex_matrix_dot(*args):
+    """ Shorthand for product between several dots.
+    Given :math:`N` matrices :math:`A_0, A_1, .., A_N`, ``matrix_dot`` will
+    generate the matrix product between all in the given order, namely
+    :math:`A_0 \cdot A_1 \cdot A_2 \cdot .. \cdot A_N`.
+    """
+    rval = args[0]
+    for a in args[1:]:
+        rval = complex_dot(rval, a)
+    return rval
 
 
 def transpose(X):

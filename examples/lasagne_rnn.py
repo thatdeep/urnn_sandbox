@@ -5,7 +5,7 @@ import numpy as np
 import theano.tensor as T
 from numpy import random as rnd, linalg as la
 
-from layers import UnitaryLayer, UnitaryKronLayer, RecurrentUnitaryLayer, ComplexLayer, WTTLayer, Modrelu
+from layers import UnitaryLayer, UnitaryKronLayer, RecurrentUnitaryLayer, ComplexLayer, WTTLayer, ModRelu
 from matplotlib import pyplot as plt
 from utils.optimizations import nesterov_momentum, custom_sgd
 from lasagne.nonlinearities import rectify
@@ -25,7 +25,7 @@ N_HIDDEN = 81
 # Number of training sequences in each batch
 N_BATCH = 100
 # Optimization learning rate
-LEARNING_RATE = 3 * 1e-3
+LEARNING_RATE = 3 * 1e-4
 # All gradients above this will be clipped
 GRAD_CLIP = 100
 # How often should we check the output?
@@ -104,6 +104,39 @@ def gen_data(min_length=MIN_LENGTH, max_length=MAX_LENGTH, n_batch=N_BATCH):
             mask.astype('int32'))
 
 
+def main(n_iter, n_batch, n_hidden, time_steps, learning_rate, savefile, model, input_type, out_every_t, loss_function):
+    n_input = 2
+    n_output = 1
+    n_train = 100000
+    n_test = 10000
+    num_batches = n_train // n_batch
+
+    # --- Create data --------------------
+    train_x, train_y, train_mask = gen_data(min_length=time_steps, max_length=time_steps + 1, n_batch=n_train)
+    test_x, test_y, val_mask = gen_data(min_length=time_steps, max_length=time_steps + 1, n_batch=n_test)
+
+
+    s_train_x = theano.shared(train_x)
+    s_train_y = theano.shared(train_y)
+
+    s_test_x = theano.shared(test_x)
+    s_test_y = theano.shared(test_y)
+
+    gradient_clipping = np.float32(1)
+
+    learning_rate = theano.shared(np.array(learning_rate, dtype=theano.config.floatX))
+
+    # building network
+    l_in = lasagne.layers.InputLayer(shape=(None, MAX_LENGTH, N_INPUT))
+    l_mask = lasagne.layers.InputLayer(shape=(None, MAX_LENGTH),input_var=T.imatrix("mask"))
+    l_in_hid = lasagne.layers.DenseLayer(lasagne.layers.InputLayer((None, N_INPUT)), N_HIDDEN * 2)
+
+    # building hidden-hidden recurrent layer
+    if model == "":
+        pass
+
+
+
 if __name__ == "__main__":
     print("Building network ...")
     N_INPUT=2
@@ -119,11 +152,11 @@ if __name__ == "__main__":
     # define input-to-hidden and hidden-to-hidden linear transformations
     l_in_hid = lasagne.layers.DenseLayer(lasagne.layers.InputLayer((None, N_INPUT)), N_HIDDEN * 2)
     #l_hid_hid = ComplexLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
-    #l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
-    #manifolds = {}
+    l_hid_hid = UnitaryLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)))
+    manifolds = {}
 
 
-    l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [3]*4, [2]*3)
+    #l_hid_hid = WTTLayer(lasagne.layers.InputLayer((None, N_HIDDEN * 2)), [3]*4, [2]*3)
 
     manifold = l_hid_hid.manifold
     if not isinstance(manifold, list):
